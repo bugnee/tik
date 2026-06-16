@@ -14,14 +14,17 @@ http://localhost:3000 — 로그인 화면에서 **역할 전환**으로 데모 
 
 ## Vercel 배포 (권장)
 
+> **배포 실패 시 (Express / tsc / schedules.routes.ts 오류)**  
+> Root Directory가 `./` 이면 **루트 Express API**가 빌드됩니다. 반드시 **`web`** 으로 설정하세요.
+
 ### 1) GitHub 연결 (한 번만)
 
 1. **[Vercel — 새 프로젝트](https://vercel.com/new)** 열기
 2. **Import Git Repository** → `bugnee/tik` 선택
-3. **Configure Project**:
-   - **Root Directory** → `Edit` → **`web`** 선택 (필수)
-   - Framework Preset: **Next.js** (자동)
-   - Build Command: `npm run build` (기본)
+3. **Configure Project** (Deploy 누르기 **전**):
+   - **Root Directory** → **Edit** → **`web`** 폴더 선택 (**`./` 아님**)
+   - Framework Preset: **Next.js** (자동으로 바뀌어야 함)
+   - Express / `./` 이면 **절대 Deploy 하지 마세요**
 4. **Deploy** 클릭
 
 배포 URL 예: `https://tik.vercel.app` 또는 `https://tik-xxx.vercel.app`
