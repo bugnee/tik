@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TripIt Korea — 운영 관리</title>
+  <style>
+    :root {
+      --bg: #f0f2f8; --card: #fff; --border: #dde3ef; --primary: #1e4fd6;
+      --text: #1a1f36; --muted: #64748b; --danger: #dc2626; --ok: #059669;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", "Malgun Gothic", sans-serif; background: var(--bg); color: var(--text); }
+    header {
+      background: linear-gradient(135deg, #0f2b7a, #1e4fd6);
+      color: #fff; padding: 16px 24px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+    }
+    header h1 { margin: 0; font-size: 1.25rem; }
+    .user-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    select, button, input {
+      padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.9rem;
+    }
+    button { cursor: pointer; background: var(--primary); color: #fff; border: none; font-weight: 600; }
+    button.secondary { background: #e2e8f0; color: var(--text); }
+    main { max-width: 1280px; margin: 20px auto; padding: 0 16px 40px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    }
+    .card h2 { margin: 0 0 12px; font-size: 1rem; }
+    .stat strong { display: block; font-size: 1.6rem; color: var(--primary); }
+    .stat span { font-size: 0.8rem; color: var(--muted); }
+    .stat.danger strong { color: var(--danger); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { border: 1px solid var(--border); padding: 8px; text-align: left; }
+    th { background: #eef2ff; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .badge.ACTIVE { background: #dcfce7; color: #166534; }
+    .badge.HOLD { background: #fef3c7; color: #92400e; }
+    .badge.DELAYED { background: #fee2e2; color: #991b1b; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+    .pagination { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+    a { color: var(--primary); }
+    .layout { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media (min-width: 960px) { .layout { grid-template-columns: 1fr 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>TripIt Korea 운영 관리</h1>
+    <div class="user-bar">
+      <label style="color:#fff;font-size:0.85rem">역할 전환
+        <select id="userSelect"></select>
+      </label>
+      <a href="/schedule" style="color:#fff">스케줄 상세</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid" id="stats"></div>
+
+    <div class="layout">
+      <section class="card" id="teamPanel">
+        <h2 id="panelTitle">대시보드</h2>
+        <div id="panelBody"></div>
+      </section>
+
+      <section class="card">
+        <h2>고객사 목록</h2>
+        <div class="toolbar">
+          <input id="search" placeholder="고객사명 / 코드 검색" />
+          <select id="statusFilter">
+            <option value="">전체 상태</option>
+            <option value="ACTIVE">진행중</option>
+            <option value="HOLD">일시정지</option>
+            <option value="TERMINATED">종료</option>
+          </select>
+          <button class="secondary" id="searchBtn">검색</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>코드</th><th>고객사</th><th>팀</th><th>담당</th><th>상태</th><th></th></tr></thead>
+            <tbody id="clientRows"></tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <button class="secondary" id="prevBtn">이전</button>
+          <span id="pageInfo">1 / 1</span>
+          <button class="secondary" id="nextBtn">다음</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    let currentUserId = null;
+    let page = 1;
+
+    function headers() {
+      return { "Content-Type": "application/json", "X-User-Id": String(currentUserId) };
+    }
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, { ...opts, headers: { ...headers(), ...(opts.headers || {}) } });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "요청 실패");
+      return data;
+    }
+
+    function renderStats(data) {
+      const s = data.summary || {};
+      const items = [];
+
+      if (data.scope === "EXECUTIVE") {
+        items.push(
+          ["전체 고객사", s.totalClients],
+          ["진행중", s.activeClients],
+          ["팀 수", s.totalTeams],
+          ["담당자", s.totalManagers],
+          ["지연 업무", s.delayedTasks, true],
+        );
+      } else if (data.scope === "TEAM") {
+        items.push(
+          ["팀 고객사", Object.values(s.clients || {}).reduce((a,b)=>a+b,0)],
+          ["진행중", s.clients?.ACTIVE || 0],
+          ["지연 업무", s.delayedTasks, true],
+        );
+      } else {
+        items.push(
+          ["담당 고객사", s.assignedClientCount],
+          ["미완료", (s.taskByStatus?.READY||0)+(s.taskByStatus?.PROGRESS||0)+(s.taskByStatus?.REVIEW||0)],
+          ["지연", s.overdueCount, true],
+        );
+      }
+
+      document.getElementById("stats").innerHTML = items.map(([label, val, danger]) =>
+        `<div class="card stat ${danger?'danger':''}"><strong>${val??0}</strong><span>${label}</span></div>`
+      ).join("");
+    }
+
+    function renderPanel(data) {
+      const body = document.getElementById("panelBody");
+      document.getElementById("panelTitle").textContent =
+        data.scope === "EXECUTIVE" ? "팀별 현황" :
+        data.scope === "TEAM" ? `${data.team?.name} — 담당자 모니터링` : "내 업무";
+
+      if (data.scope === "EXECUTIVE" && data.teams) {
+        body.innerHTML = `<table><thead><tr><th>팀</th><th>팀장</th><th>고객사</th><th>팀원</th></tr></thead><tbody>${
+          data.teams.map(t => `<tr><td>${t.name}</td><td>${t.leader?.name||"-"}</td><td>${t.clientCount}</td><td>${t.memberCount}</td></tr>`).join("")
+        }</tbody></table>`;
+        return;
+      }
+
+      if (data.scope === "TEAM" && data.managers) {
+        body.innerHTML = `<table><thead><tr><th>담당자</th><th>고객사</th><th>업무</th><th>미완료</th><th>지연</th></tr></thead><tbody>${
+          data.managers.map(m => `<tr><td>${m.name}</td><td>${m.assignedClients}</td><td>${m.totalTasks}</td><td>${m.pendingTasks}</td><td>${m.delayedTasks}</td></tr>`).join("")
+        }</tbody></table>`;
+        return;
+      }
+
+      if (data.upcomingTasks) {
+        body.innerHTML = `<table><thead><tr><th>고객사</th><th>업무</th><th>주차</th><th>상태</th><th>마감</th></tr></thead><tbody>${
+          data.upcomingTasks.slice(0,15).map(t => `<tr>
+            <td>${t.client.name}</td><td>${t.taskName}</td><td>${t.weekNumber}주</td>
+            <td><span class="badge ${t.status}">${t.status}</span></td>
+            <td>${t.dueDate ? new Date(t.dueDate).toLocaleDateString("ko-KR") : "-"}</td>
+          </tr>`).join("")
+        }</tbody></table>`;
+      }
+    }
+
+    async function loadDashboard() {
+      const data = await api("/api/dashboard");
+      renderStats(data);
+      renderPanel(data);
+    }
+
+    async function loadClients() {
+      const search = document.getElementById("search").value;
+      const status = document.getElementById("statusFilter").value;
+      const params = new URLSearchParams({ page, limit: 15 });
+      if (search) params.set("search", search);
+      if (status) params.set("status", status);
+
+      const data = await api(`/api/clients?${params}`);
+      document.getElementById("clientRows").innerHTML = data.items.map(c => `<tr>
+        <td>${c.code||"-"}</td>
+        <td>${c.name}</td>
+        <td>${c.team?.name||"-"}</td>
+        <td>${c.primaryManager?.name||"-"}</td>
+        <td><span class="badge ${c.contractStatus}">${c.contractStatus}</span></td>
+        <td><a href="/schedule?id=${c.id}">스케줄</a></td>
+      </tr>`).join("") || `<tr><td colspan="6">결과 없음</td></tr>`;
+
+      document.getElementById("pageInfo").textContent = `${data.page} / ${data.totalPages} (총 ${data.total}건)`;
+    }
+
+    async function initUsers() {
+      const users = await fetch("/api/users/demo").then(r => r.json());
+      const sel = document.getElementById("userSelect");
+      sel.innerHTML = users.map(u =>
+        `<option value="${u.id}">[${u.role}] ${u.name}${u.team?.name ? " — "+u.team.name : ""}</option>`
+      ).join("");
+      currentUserId = users[0]?.id;
+      sel.value = currentUserId;
+      sel.addEventListener("change", async () => {
+        currentUserId = Number(sel.value);
+        page = 1;
+        await loadDashboard();
+        await loadClients();
+      });
+    }
+
+    document.getElementById("searchBtn").addEventListener("click", () => { page = 1; loadClients(); });
+    document.getElementById("prevBtn").addEventListener("click", () => { if (page > 1) { page--; loadClients(); } });
+    document.getElementById("nextBtn").addEventListener("click", () => { page++; loadClients(); });
+
+    (async () => {
+      await initUsers();
+      await loadDashboard();
+      await loadClients();
+    })();
+  </script>
+</body>
+</html>

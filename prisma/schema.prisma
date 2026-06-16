@@ -1,0 +1,194 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+/// 사원 (CEO → 임원 → 팀장 → 담당자)
+model User {
+  id          Int                @id @default(autoincrement())
+  email       String             @unique
+  password    String
+  name        String
+  role        Role               @default(MANAGER)
+  teamId      Int?
+  team        Team?              @relation("TeamMembers", fields: [teamId], references: [id])
+  ledTeam     Team?              @relation("TeamLeader")
+  tasks       Task[]
+  assignments ClientAssignment[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([teamId, role])
+  @@index([role])
+}
+
+enum Role {
+  CEO
+  EXECUTIVE
+  LEADER
+  MANAGER
+}
+
+/// 마케팅 팀 (1팀당 담당 고객사 수백~수천 개)
+model Team {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  leaderId  Int?     @unique
+  leader    User?    @relation("TeamLeader", fields: [leaderId], references: [id])
+  members   User[]   @relation("TeamMembers")
+  clients   Client[]
+  createdAt DateTime @default(now())
+
+  @@index([leaderId])
+}
+
+/// 고객사 (1만+ 수용 — teamId + status + name 복합 인덱스)
+model Client {
+  id             Int                @id @default(autoincrement())
+  code           String?            @unique // 내부 관리 코드 (예: YY-SRF-001)
+  name           String
+  businessNumber String?
+  contractStatus ContractStatus     @default(ACTIVE)
+  teamId         Int?
+  team           Team?              @relation(fields: [teamId], references: [id])
+  contracts      Contract[]
+  tasks          Task[]
+  schedules      MonthlySchedule[]
+  assignments    ClientAssignment[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([teamId, contractStatus])
+  @@index([contractStatus, name])
+  @@index([name])
+  @@index([teamId, name])
+}
+
+/// 담당자 ↔ 고객사 배정 (1 고객사 : 1 주담당 + N 보조담당)
+model ClientAssignment {
+  id        Int      @id @default(autoincrement())
+  clientId  Int
+  userId    Int
+  isPrimary Boolean  @default(true)
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([clientId, userId])
+  @@index([userId, isPrimary])
+  @@index([clientId, isPrimary])
+}
+
+enum ContractStatus {
+  ACTIVE
+  HOLD
+  TERMINATED
+}
+
+model Contract {
+  id             Int           @id @default(autoincrement())
+  clientId       Int
+  client         Client        @relation(fields: [clientId], references: [id])
+  startDate      DateTime
+  endDate        DateTime
+  amount         Decimal
+  outsourcingFee Decimal       @default(0)
+  billingStatus  BillingStatus @default(PENDING)
+  createdAt      DateTime      @default(now())
+
+  @@index([clientId])
+  @@index([startDate, endDate])
+}
+
+enum BillingStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+model MonthlySchedule {
+  id                Int            @id @default(autoincrement())
+  clientId          Int
+  client            Client         @relation(fields: [clientId], references: [id])
+  targetYear        Int
+  targetMonth       Int
+  title             String
+  contractStartDate DateTime
+  contractEndDate   DateTime
+  status            ScheduleStatus @default(ACTIVE)
+  tasks             Task[]
+  createdAt         DateTime       @default(now())
+
+  @@unique([clientId, targetYear, targetMonth])
+  @@index([targetYear, targetMonth])
+}
+
+enum ScheduleStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+model Task {
+  id            Int             @id @default(autoincrement())
+  scheduleId    Int
+  schedule      MonthlySchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  clientId      Int
+  client        Client          @relation(fields: [clientId], references: [id])
+  assigneeId    Int?
+  assignee      User?           @relation(fields: [assigneeId], references: [id])
+
+  weekNumber    Int
+  weekStartDate DateTime
+  weekEndDate   DateTime
+  channel       ChannelType
+  blogSubType   BlogSubType?
+  taskName      String
+  detailContent String?
+  goal          String?
+  remarks       String?
+
+  targetCount  Int        @default(0)
+  currentCount Int        @default(0)
+  status       TaskStatus @default(READY)
+
+  partnerName String?
+  resultUrls  Json       @default("[]")
+  dueDate     DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([clientId, weekNumber])
+  @@index([clientId, status])
+  @@index([assigneeId, status])
+  @@index([assigneeId, dueDate])
+  @@index([channel, status])
+  @@index([status, dueDate])
+  @@index([scheduleId, weekNumber])
+}
+
+enum ChannelType {
+  PLACE
+  BLOG
+  INFLUENCER
+  EXPERIENCE
+  CHANNEL
+}
+
+enum BlogSubType {
+  OPTIMIZED
+  SEMI_OPTIMIZED
+}
+
+enum TaskStatus {
+  READY
+  PROGRESS
+  REVIEW
+  COMPLETED
+  DELAYED
+}

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TripIt Korea — 월간 마케팅 스케줄</title>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --card: #fff;
+      --border: #d8dee9;
+      --primary: #1e4fd6;
+      --text: #1a1f36;
+      --muted: #64748b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      background: linear-gradient(135deg, #0f2b7a, #1e4fd6);
+      color: #fff;
+      padding: 24px 32px;
+    }
+    header h1 { margin: 0 0 4px; font-size: 1.5rem; }
+    header p { margin: 0; opacity: 0.9; font-size: 0.95rem; }
+    main { max-width: 1200px; margin: 24px auto; padding: 0 16px 48px; }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .panel h2 { margin: 0 0 16px; font-size: 1.1rem; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+    label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+    input, select {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.95rem;
+      min-width: 140px;
+    }
+    button {
+      padding: 10px 18px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-secondary { background: #e2e8f0; color: var(--text); }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .summary-item {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+    .summary-item strong { display: block; font-size: 1.4rem; color: var(--primary); }
+    .summary-item span { font-size: 0.8rem; color: var(--muted); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th { background: #eef2ff; font-weight: 600; white-space: nowrap; }
+    .week-label { font-weight: 700; color: var(--primary); }
+    .channel {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+    .status { margin-top: 12px; padding: 10px; border-radius: 8px; font-size: 0.9rem; }
+    .status.ok { background: #ecfdf5; color: #065f46; }
+    .status.err { background: #fef2f2; color: #991b1b; }
+    .empty { text-align: center; color: var(--muted); padding: 40px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>TripIt Korea — 월간 마케팅 스케줄</h1>
+    <p>고객사별 주차별 업무 자동 생성 · 양yang서프리조트 패키지</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>스케줄 생성</h2>
+      <div class="row">
+        <label>고객사 ID<input id="clientId" type="number" value="1" min="1" /></label>
+        <label>연도<input id="targetYear" type="number" value="2026" /></label>
+        <label>월<input id="targetMonth" type="number" value="6" min="1" max="12" /></label>
+        <label>계약 시작<input id="contractStartDate" type="date" value="2026-06-05" /></label>
+        <label>계약 종료<input id="contractEndDate" type="date" value="2026-07-04" /></label>
+        <label>패키지
+          <select id="packageType">
+            <option value="PLACE_BLOG_FOCUS">플레이스 &amp; 블로그 집중</option>
+          </select>
+        </label>
+        <button class="btn-secondary" id="previewBtn">미리보기</button>
+        <button class="btn-primary" id="generateBtn">생성 &amp; 저장</button>
+      </div>
+      <div id="status" class="status" style="display:none"></div>
+    </section>
+
+    <section class="panel" id="summaryPanel" style="display:none">
+      <h2>월간 진행 요약</h2>
+      <div class="summary" id="summary"></div>
+    </section>
+
+    <section class="panel">
+      <h2 id="scheduleTitle">주차별 업무 일정</h2>
+      <div id="scheduleTable">
+        <div class="empty">위에서 「미리보기」 또는 「생성 &amp; 저장」을 눌러주세요.<br />또는 <a href="/api/schedules/1">저장된 스케줄 #1</a> 불러오기</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const summaryPanel = document.getElementById("summaryPanel");
+    const summaryEl = document.getElementById("summary");
+    const scheduleTable = document.getElementById("scheduleTable");
+    const scheduleTitle = document.getElementById("scheduleTitle");
+
+    function showStatus(msg, ok = true) {
+      statusEl.style.display = "block";
+      statusEl.className = "status " + (ok ? "ok" : "err");
+      statusEl.textContent = msg;
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return "-";
+      const d = new Date(iso);
+      return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;
+    }
+
+    function renderSummary(summary) {
+      if (!summary) return;
+      summaryPanel.style.display = "block";
+      summaryEl.innerHTML = `
+        <div class="summary-item"><strong>${summary.optimizedBlogCount}</strong><span>최적화 블로그</span></div>
+        <div class="summary-item"><strong>${summary.semiOptimizedBlogCount}</strong><span>준최적화 블로그</span></div>
+        <div class="summary-item"><strong>${summary.influencerCount}</strong><span>인플루언서</span></div>
+        <div class="summary-item"><strong>${summary.experienceCount}</strong><span>체험단</span></div>
+        <div class="summary-item"><strong>${summary.totalTaskCount}</strong><span>총 업무 항목</span></div>
+      `;
+    }
+
+    function renderTable(data) {
+      const weeks = data.tasksByWeek || [];
+      if (!weeks.length) {
+        scheduleTable.innerHTML = '<div class="empty">표시할 스케줄이 없습니다.</div>';
+        return;
+      }
+
+      if (data.title) scheduleTitle.textContent = data.title;
+      else if (data.client?.name) scheduleTitle.textContent = `${data.client.name} — ${data.targetYear}년 ${data.targetMonth}월`;
+
+      let rows = "";
+      for (const week of weeks) {
+        const period = `${fmtDate(week.weekStartDate)} ~ ${fmtDate(week.weekEndDate)}`;
+        for (let i = 0; i < week.tasks.length; i++) {
+          const t = week.tasks[i];
+          const channel = t.channel + (t.blogSubType ? ` (${t.blogSubType === "OPTIMIZED" ? "최적화" : "준최적화"})` : "");
+          rows += `<tr>
+            ${i === 0 ? `<td rowspan="${week.tasks.length}"><span class="week-label">${week.weekNumber}주차</span><br/><small>${period}</small></td>` : ""}
+            <td><span class="channel">${channel}</span><br/>${t.taskName}</td>
+            <td>${t.detailContent || "-"}<br/><small>목표 ${t.targetCount}건</small></td>
+            <td>${t.goal || "-"}</td>
+            <td>${t.remarks || "-"}</td>
+          </tr>`;
+        }
+      }
+
+      scheduleTable.innerHTML = `<table>
+        <thead><tr><th>주차</th><th>주요 업무</th><th>세부 내용</th><th>목표 / 기대효과</th><th>비고</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    }
+
+    function getPayload() {
+      return {
+        clientId: Number(document.getElementById("clientId").value),
+        targetYear: Number(document.getElementById("targetYear").value),
+        targetMonth: Number(document.getElementById("targetMonth").value),
+        title: `${document.getElementById("targetMonth").value}월 플레이스 & 블로그 집중 패키지`,
+        contractStartDate: document.getElementById("contractStartDate").value,
+        contractEndDate: document.getElementById("contractEndDate").value,
+        packageType: document.getElementById("packageType").value,
+      };
+    }
+
+    async function callApi(path, method = "GET", body) {
+      const res = await fetch(path, {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "요청 실패");
+      return data;
+    }
+
+    document.getElementById("previewBtn").addEventListener("click", async () => {
+      try {
+        const data = await callApi("/api/schedules/preview", "POST", getPayload());
+        renderSummary(data.summary);
+        renderTable(data);
+        showStatus("미리보기 완료 (DB 저장 없음)");
+      } catch (e) {
+        showStatus(e.message, false);
+      }
+    });
+
+    document.getElementById("generateBtn").addEventListener("click", async () => {
+      try {
+        const payload = { ...getPayload(), overwrite: true };
+        const data = await callApi("/api/schedules/generate", "POST", payload);
+        renderSummary(data.summary);
+        renderTable(data);
+        showStatus(`스케줄 저장 완료 (ID: ${data.scheduleId})`);
+      } catch (e) {
+        showStatus(e.message, false);
+      }
+    });
+
+    // URL에 ?id=1 있으면 자동 로드
+    (async () => {
+      const params = new URLSearchParams(location.search);
+      const id = params.get("id") || "1";
+      try {
+        const data = await callApi(`/api/schedules/${id}`);
+        renderTable(data);
+        showStatus(`스케줄 #${id} 불러오기 완료`);
+      } catch (_) { /* ignore */ }
+    })();
+  </script>
+</body>
+</html>
