@@ -3,23 +3,27 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
 import { PlaceCredentialsPanel } from "@/components/place-qa/PlaceCredentialsPanel";
 import { PlaceQaDashboardPanel } from "@/components/place-qa/PlaceQaDashboardPanel";
 import { QaConversationPanel } from "@/components/place-qa/QaConversationPanel";
+import { QaContractTodoTags } from "@/components/place-qa/QaContractTodoTags";
 import { PageHeader } from "@/components/ui/DataTable";
-import { Select } from "@/components/ui/FormFields";
 import {
   getPlaceCredentialsForContract,
+  getQaContractRows,
   getQaScopeHint,
   threadNeedsStaffReply,
 } from "@/lib/place-qa-utils";
 import { filterContractsByRole } from "@/lib/selectors";
+import { cn } from "@/lib/cn";
 
 export function PlaceQaPage() {
   const data = useData();
   const { currentUser, activeRole } = useRole();
+  const searchParams = useSearchParams();
 
   const contracts = useMemo(
     () =>
@@ -29,12 +33,24 @@ export function PlaceQaPage() {
     [data, activeRole, currentUser.id],
   );
 
+  const contractRows = useMemo(
+    () =>
+      getQaContractRows(
+        data,
+        contracts.map((contract) => contract.id),
+      ),
+    [data, contracts],
+  );
+
   const defaultId =
+    searchParams.get("contract") ??
     contracts.find((c) =>
       data.qaThreads.some(
         (t) => t.contractId === c.id && threadNeedsStaffReply(data, t),
       ),
-    )?.id ?? contracts[0]?.id ?? "";
+    )?.id ??
+    contracts[0]?.id ??
+    "";
 
   const [contractId, setContractId] = useState(defaultId);
 
@@ -65,26 +81,30 @@ export function PlaceQaPage() {
 
       {contracts.length > 0 && selected && (
         <>
-          <Select
-            label="업체 선택"
-            value={selected.id}
-            onChange={(e) => setContractId(e.target.value)}
-          >
-            {contracts.map((c) => {
-              const needs = data.qaThreads.filter(
-                (t) =>
-                  t.contractId === c.id && threadNeedsStaffReply(data, t),
-              ).length;
-              const hasPlace = !!getPlaceCredentialsForContract(data, c.id);
-              return (
-                <option key={c.id} value={c.id}>
-                  {c.clientName}
-                  {needs > 0 ? ` · 미답변 ${needs}` : ""}
-                  {hasPlace ? " · 플레이스 등록" : ""}
-                </option>
-              );
-            })}
-          </Select>
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+              업체 선택
+            </p>
+            <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950/40 p-1">
+              {contractRows.map((row) => (
+                <button
+                  key={row.contractId}
+                  type="button"
+                  onClick={() => setContractId(row.contractId)}
+                  className={cn(
+                    "flex w-full flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                    selected.id === row.contractId
+                      ? "bg-cyan-500/10 text-cyan-100 ring-1 ring-cyan-500/25"
+                      : "text-zinc-300 hover:bg-zinc-900/80",
+                  )}
+                >
+                  <span className="font-medium">{row.clientName}</span>
+                  <span className="text-zinc-600">·</span>
+                  <QaContractTodoTags row={row} />
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
             {(selected.hasPlaceSetting ||

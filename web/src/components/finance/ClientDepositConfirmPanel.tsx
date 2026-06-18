@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Building2, ClipboardCheck } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +10,8 @@ import { Modal } from "@/components/ui/Modal";
 import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
 import {
+  CLIENT_DEPOSIT_ALL_BUTTON_STYLES,
+  CLIENT_DEPOSIT_STATUS_BUTTON_STYLES,
   countDepositByStatus,
   DEPOSIT_STATUS_ORDER,
   getDepositConfirmContracts,
@@ -19,13 +21,15 @@ import {
   calcBonusAmounts,
   calcBonusClosingDeadline,
   calcScheduledPayDate,
+  calcVisibleBonusTotal,
   formatBonusKRW,
 } from "@/lib/bonus-utils";
+import { BonusAmountBreakdownInline } from "@/components/bonus/BonusAmountBreakdown";
 import { isLeaderManagedContract } from "@/lib/contract-access-utils";
 import { formatKRW } from "@/lib/finance";
 import { getTeamName, getUserName } from "@/lib/selectors";
 import { cn } from "@/lib/cn";
-import type { AppData, ClientDepositStatus, Contract } from "@/lib/types";
+import type { AppData, ClientDepositStatus, Contract, UserRole } from "@/lib/types";
 import {
   CLIENT_DEPOSIT_STATUS_LABELS,
   CLIENT_DEPOSIT_STATUS_VARIANT,
@@ -34,45 +38,30 @@ import {
 function BonusDepositAmountBlock({
   contract,
   data,
+  viewerRole = "finance_manager",
 }: {
   contract: Contract;
   data: AppData;
+  viewerRole?: UserRole;
 }) {
   const amounts = calcBonusAmounts(contract, data.bonusPolicy, data);
   const leaderManaged = isLeaderManagedContract(data, contract);
+  const visibleTotal = calcVisibleBonusTotal(amounts, viewerRole);
 
   return (
     <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
       <p className="text-xs font-semibold text-emerald-300">
-        성과급(세전) 지급 예정액 {formatBonusKRW(amounts.totalAmount)}
+        성과급(세전) 지급 예정액 {formatBonusKRW(visibleTotal)}
       </p>
-      <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-        {leaderManaged ? (
-          <>
-            <span className="text-cyan-500/90">팀장 직접 담당</span>
-            {" · "}팀장 {formatBonusKRW(amounts.teamLeaderBonusAmount)} (
-            {amounts.teamLeaderPercentApplied}%)
-            {" · "}임직원 {formatBonusKRW(amounts.executiveBonusAmount)} (
-            {amounts.executivePercentApplied}%)
-          </>
-        ) : (
-          <>
-            담당 {formatBonusKRW(amounts.staffBonusAmount)} (
-            {amounts.staffPercentApplied}%)
-            {" · "}팀장 {formatBonusKRW(amounts.teamLeaderBonusAmount)} (
-            {amounts.teamLeaderPercentApplied}%)
-            {" · "}임직원 {formatBonusKRW(amounts.executiveBonusAmount)} (
-            {amounts.executivePercentApplied}%)
-          </>
-        )}
-      </p>
+      {leaderManaged && (
+        <p className="mt-1 text-[11px] text-cyan-500/90">팀장 직접 담당</p>
+      )}
+      <BonusAmountBreakdownInline amounts={amounts} viewerRole={viewerRole} />
     </div>
   );
 }
 
-function ClientDepositModal({
-  open,
-  onClose,
+function ClientDepositContractList({
   contracts,
   filter,
   canEdit,
@@ -81,8 +70,6 @@ function ClientDepositModal({
   onSetStatus,
   data,
 }: {
-  open: boolean;
-  onClose: () => void;
   contracts: Contract[];
   filter: ClientDepositStatus | "all";
   canEdit: boolean;
@@ -97,8 +84,9 @@ function ClientDepositModal({
       : `${CLIENT_DEPOSIT_STATUS_LABELS[filter]} (${contracts.length}곳)`;
 
   return (
-    <Modal open={open} onClose={onClose} title={title} size="lg">
-      <p className="mb-4 text-sm text-zinc-500">
+    <div className="space-y-3">
+      <p className="text-sm font-medium text-zinc-300">{title}</p>
+      <p className="text-xs text-zinc-500">
         연장 계약으로 전환된 고객사의 광고비 입금 여부를 확인합니다.
       </p>
       <div className="max-h-[min(60vh,480px)] space-y-3 overflow-y-auto">
@@ -183,11 +171,57 @@ function ClientDepositModal({
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+function ClientDepositModal({
+  open,
+  onClose,
+  contracts,
+  filter,
+  canEdit,
+  depositDates,
+  onDepositDateChange,
+  onSetStatus,
+  data,
+}: {
+  open: boolean;
+  onClose: () => void;
+  contracts: Contract[];
+  filter: ClientDepositStatus | "all";
+  canEdit: boolean;
+  depositDates: Record<string, string>;
+  onDepositDateChange: (contractId: string, date: string) => void;
+  onSetStatus: (contract: Contract, status: ClientDepositStatus) => void;
+  data: AppData;
+}) {
+  const title =
+    filter === "all"
+      ? `입금확인 고객사 (${contracts.length}곳)`
+      : `${CLIENT_DEPOSIT_STATUS_LABELS[filter]} (${contracts.length}곳)`;
+
+  return (
+    <Modal open={open} onClose={onClose} title={title} size="lg">
+      <ClientDepositContractList
+        contracts={contracts}
+        filter={filter}
+        canEdit={canEdit}
+        depositDates={depositDates}
+        onDepositDateChange={onDepositDateChange}
+        onSetStatus={onSetStatus}
+        data={data}
+      />
     </Modal>
   );
 }
 
-export function ClientDepositConfirmPanel() {
+export function ClientDepositConfirmPanel({
+  autoOpenPending = false,
+}: {
+  /** 해야 할 일 링크 진입 시 확인 대기 목록 자동 펼침 */
+  autoOpenPending?: boolean;
+}) {
   const data = useData();
   const { canManageFinanceOps } = useRole();
   const { updateClientDepositStatus } = data;
@@ -195,18 +229,23 @@ export function ClientDepositConfirmPanel() {
   const contracts = useMemo(() => getDepositConfirmContracts(data), [data]);
   const counts = useMemo(() => countDepositByStatus(contracts), [contracts]);
 
-  const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState<ClientDepositStatus | "all">("all");
+  const [activeFilter, setActiveFilter] = useState<
+    ClientDepositStatus | "all" | null
+  >(null);
   const [depositDates, setDepositDates] = useState<Record<string, string>>({});
 
-  const modalContracts = useMemo(() => {
-    if (filter === "all") return contracts;
-    return contracts.filter((c) => resolveClientDepositStatus(c) === filter);
-  }, [contracts, filter]);
+  useEffect(() => {
+    if (!autoOpenPending || counts.pending <= 0) return;
+    setActiveFilter("pending");
+  }, [autoOpenPending, counts.pending]);
 
-  function openModal(status?: ClientDepositStatus) {
-    setFilter(status ?? "all");
-    setOpen(true);
+  const filteredContracts = useMemo(() => {
+    if (activeFilter === null || activeFilter === "all") return contracts;
+    return contracts.filter((c) => resolveClientDepositStatus(c) === activeFilter);
+  }, [contracts, activeFilter]);
+
+  function selectFilter(next: ClientDepositStatus | "all") {
+    setActiveFilter((prev) => (prev === next ? null : next));
   }
 
   function setStatus(contract: Contract, status: ClientDepositStatus) {
@@ -219,65 +258,96 @@ export function ClientDepositConfirmPanel() {
   }
 
   return (
-    <>
-      <Card glow={counts.pending > 0}>
-        <CardHeader
-          title="입금확인 업무"
-          subtitle="연장 계약 전환 고객 · 재무담당 입금 여부 확인"
-          action={
-            counts.pending > 0 ? (
-              <Badge variant="warning">{counts.pending}건 확인 필요</Badge>
-            ) : undefined
-          }
-        />
-        <div className="flex flex-wrap gap-2">
-          {DEPOSIT_STATUS_ORDER.map((status) => (
+    <Card glow={counts.pending > 0}>
+      <CardHeader
+        title="입금확인 업무"
+        subtitle="연장 계약 전환 고객 · 재무담당 입금 여부 확인"
+        action={
+          counts.pending > 0 ? (
+            <Badge variant="warning">{counts.pending}건 확인 필요</Badge>
+          ) : undefined
+        }
+      />
+      <div className="flex flex-wrap gap-2">
+        {DEPOSIT_STATUS_ORDER.map((status) => {
+          const styles = CLIENT_DEPOSIT_STATUS_BUTTON_STYLES[status];
+          const hasItems = counts[status] > 0;
+          const isActive = activeFilter === status;
+
+          return (
             <button
               key={status}
               type="button"
-              onClick={() => openModal(status)}
+              onClick={() => selectFilter(status)}
               className={cn(
-                "flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors hover:border-emerald-500/30 hover:bg-zinc-900",
-                counts[status] > 0
-                  ? "border-zinc-700 bg-zinc-950/50"
-                  : "border-zinc-800/60 bg-zinc-950/30 text-zinc-600",
+                "flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors",
+                isActive
+                  ? styles.active
+                  : hasItems
+                    ? styles.idle
+                    : styles.empty,
               )}
             >
               <span>{CLIENT_DEPOSIT_STATUS_LABELS[status]}</span>
-              <span className="font-mono text-base font-bold text-emerald-400">
+              <span
+                className={cn(
+                  "font-mono text-base font-bold",
+                  hasItems ? styles.count : "text-zinc-600",
+                )}
+              >
                 {counts[status]}
               </span>
             </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => openModal()}
-            className="rounded-xl border border-zinc-800 px-3 py-2 text-xs text-zinc-500 hover:border-zinc-700 hover:text-zinc-300"
-          >
-            전체 {contracts.length}곳 보기
-          </button>
-        </div>
-        {!canManageFinanceOps && (
-          <p className="mt-3 text-xs text-zinc-600">
-            상태 변경은 재무담당 권한이 필요합니다.
-          </p>
-        )}
-      </Card>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => selectFilter("all")}
+          className={cn(
+            "rounded-xl border px-3 py-2 text-xs transition-colors",
+            activeFilter === "all"
+              ? CLIENT_DEPOSIT_ALL_BUTTON_STYLES.active
+              : CLIENT_DEPOSIT_ALL_BUTTON_STYLES.idle,
+          )}
+        >
+          전체 {contracts.length}곳 보기
+        </button>
+      </div>
+      {!canManageFinanceOps && (
+        <p className="mt-3 text-xs text-zinc-600">
+          상태 변경은 재무담당 권한이 필요합니다.
+        </p>
+      )}
 
-      <ClientDepositModal
-        open={open}
-        onClose={() => setOpen(false)}
-        contracts={modalContracts}
-        filter={filter}
-        canEdit={canManageFinanceOps}
-        depositDates={depositDates}
-        onDepositDateChange={(id, date) =>
-          setDepositDates((prev) => ({ ...prev, [id]: date }))
-        }
-        onSetStatus={setStatus}
-        data={data}
-      />
-    </>
+      {activeFilter !== null && (
+        <div
+          className={cn(
+            "mt-4 border-t pt-4",
+            activeFilter === "all"
+              ? "border-zinc-700"
+              : activeFilter === "pending"
+                ? "border-amber-500/30"
+                : activeFilter === "completed"
+                  ? "border-emerald-500/30"
+                  : activeFilter === "overdue"
+                    ? "border-red-500/30"
+                    : "border-cyan-500/30",
+          )}
+        >
+          <ClientDepositContractList
+            contracts={filteredContracts}
+            filter={activeFilter}
+            canEdit={canManageFinanceOps}
+            depositDates={depositDates}
+            onDepositDateChange={(id, date) =>
+              setDepositDates((prev) => ({ ...prev, [id]: date }))
+            }
+            onSetStatus={setStatus}
+            data={data}
+          />
+        </div>
+      )}
+    </Card>
   );
 }
 

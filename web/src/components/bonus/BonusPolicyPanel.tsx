@@ -4,9 +4,11 @@ import { useState } from "react";
 import { Save, Settings2 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/FormFields";
 import { useData } from "@/context/DataContext";
+import { useBonus } from "@/features/bonus/useBonus";
 import { useRole } from "@/context/RoleContext";
 import {
   getExecutiveLimit,
@@ -16,11 +18,14 @@ import {
 } from "@/lib/bonus-utils";
 import { BonusPayScheduleNotice } from "@/components/bonus/BonusPayScheduleNotice";
 import { getUserName } from "@/lib/selectors";
+import { useDirtyDraft } from "@/hooks/useDirtyDraft";
 
 export function BonusPolicyPanel() {
   const data = useData();
+  const bonus = useBonus();
   const { activeRole, currentUser } = useRole();
-  const { bonusPolicy, teams, users } = data;
+  const { bonusPolicy } = bonus;
+  const { teams, users } = data;
 
   if (activeRole === "ceo") {
     return <CeoPolicyPanel />;
@@ -29,6 +34,7 @@ export function BonusPolicyPanel() {
     const leaders = teams
       .filter((t) => t.executiveId === currentUser.id && t.leaderId)
       .map((t) => ({
+        teamId: t.id,
         leaderId: t.leaderId!,
         teamName: t.name,
         execLimit: getExecutiveLimit(bonusPolicy, currentUser.id),
@@ -39,13 +45,13 @@ export function BonusPolicyPanel() {
         title="성과급 % 설정 (임원 → 팀장)"
         subtitle={`대표 부여 한도 ${getExecutiveLimit(bonusPolicy, currentUser.id)}% 이내에서 팀장별 배분 한도 설정`}
       >
-        {leaders.map(({ leaderId, teamName, execLimit }) => (
+        {leaders.map(({ teamId, leaderId, teamName, execLimit }) => (
           <LimitRow
-            key={leaderId}
+            key={teamId}
             label={`${teamName} · ${getUserName(data, leaderId)}`}
             max={execLimit}
             value={getTeamLeaderLimit(bonusPolicy, leaderId)}
-            onSave={(v) => data.setTeamLeaderBonusLimit(leaderId, v)}
+            onSave={(v) => bonus.setTeamLeaderBonusLimit(leaderId, v)}
           />
         ))}
       </PolicyCard>
@@ -61,7 +67,7 @@ export function BonusPolicyPanel() {
     return (
       <PolicyCard
         title="성과급 % 설정 (팀장 → 담당)"
-        subtitle={`임원 부여 한도 ${leaderLimit}% 이내에서 담당별 성과급 설정 · 팀장 직접 담당 고객사는 담당 분 없이 팀장 한도 전액`}
+        subtitle={`팀 배분 한도 ${leaderLimit}% 이내에서 담당별 성과급 설정 · 팀장 직접 담당 고객사는 담당 분 없이 팀장 한도 전액`}
       >
         {staff.map((member) => (
           <LimitRow
@@ -69,7 +75,7 @@ export function BonusPolicyPanel() {
             label={member.name}
             max={leaderLimit}
             value={getStaffPercent(bonusPolicy, member.id)}
-            onSave={(v) => data.setStaffBonusPercent(member.id, v)}
+            onSave={(v) => bonus.setStaffBonusPercent(member.id, v)}
           />
         ))}
       </PolicyCard>
@@ -80,8 +86,9 @@ export function BonusPolicyPanel() {
 }
 
 function CeoPolicyPanel() {
-  const data = useData();
-  const { bonusPolicy, users } = data;
+  const bonus = useBonus();
+  const { bonusPolicy } = bonus;
+  const { users } = useData();
   const executives = users.filter((u) => u.role === "executive");
 
   return (
@@ -95,7 +102,7 @@ function CeoPolicyPanel() {
           label={exec.name}
           max={15}
           value={getExecutiveLimit(bonusPolicy, exec.id)}
-          onSave={(v) => data.setExecutiveBonusLimit(exec.id, v)}
+          onSave={(v) => bonus.setExecutiveBonusLimit(exec.id, v)}
         />
       ))}
     </PolicyCard>
@@ -142,7 +149,7 @@ function LimitRow({
   value: number;
   onSave: (percent: number) => boolean;
 }) {
-  const [draft, setDraft] = useState(String(value));
+  const { draft, setDraft, isDirty } = useDirtyDraft(String(value));
   const [error, setError] = useState<string | null>(null);
 
   function save() {
@@ -180,10 +187,10 @@ function LimitRow({
           onChange={(e) => setDraft(e.target.value)}
           className="w-24"
         />
-        <Button size="sm" onClick={save}>
+        <SaveButton size="sm" dirty={isDirty} onClick={save}>
           <Save className="h-3.5 w-3.5" />
           저장
-        </Button>
+        </SaveButton>
       </div>
       {error && <p className="w-full text-xs text-rose-400">{error}</p>}
     </div>
@@ -191,12 +198,13 @@ function LimitRow({
 }
 
 export function StaffBonusLimitInfo() {
+  const { bonusPolicy } = useBonus();
   const data = useData();
   const { currentUser } = useRole();
-  const pct = getStaffPercent(data.bonusPolicy, currentUser.id);
+  const pct = getStaffPercent(bonusPolicy, currentUser.id);
   const leaderId = getLeaderForStaff(data, currentUser.id);
   const leaderLimit = leaderId
-    ? getTeamLeaderLimit(data.bonusPolicy, leaderId)
+    ? getTeamLeaderLimit(bonusPolicy, leaderId)
     : 0;
 
   return (
@@ -207,9 +215,9 @@ export function StaffBonusLimitInfo() {
 }
 
 export function TeamLeaderSelfBonusLimitInfo() {
-  const data = useData();
+  const { bonusPolicy } = useBonus();
   const { currentUser } = useRole();
-  const limit = getTeamLeaderLimit(data.bonusPolicy, currentUser.id);
+  const limit = getTeamLeaderLimit(bonusPolicy, currentUser.id);
 
   return (
     <p className="text-xs text-zinc-500">

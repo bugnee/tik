@@ -3,9 +3,11 @@
 import { useMemo, useState } from "react";
 import { Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { useData } from "@/context/DataContext";
+import { useFinance } from "@/features/finance/useFinance";
 import { useRole } from "@/context/RoleContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Card } from "@/components/ui/Card";
 import {
   DataTable,
@@ -42,6 +44,7 @@ import {
 } from "@/lib/partner-utils";
 import type { Expense, ExpenseCategory, ExpenseInput, PayoutStatus } from "@/lib/types";
 import { PAYOUT_LABELS } from "@/lib/types";
+import { useFormDirty } from "@/hooks/useFormDirty";
 import { cn } from "@/lib/cn";
 
 const PAYOUT_VARIANT: Record<
@@ -76,21 +79,24 @@ export function ExpensesManager() {
   const { activeRole, currentUser } = useRole();
   const {
     expenses,
-    contracts,
-    partners,
-    expenseCategories,
-    partnerFilterDefinitions,
     addExpense,
     updateExpense,
     deleteExpense,
     requestExpensePayout,
-  } = data;
+  } = useFinance();
+  const { contracts, partners, expenseCategories, partnerFilterDefinitions } =
+    data;
   const [search, setSearch] = useState("");
   const [filterPayout, setFilterPayout] = useState<string>("all");
   const [periodFilter, setPeriodFilter] = useState(createDefaultPeriodFilter);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [form, setForm] = useState<ExpenseInput>(emptyForm());
+  const formDirty = useFormDirty(
+    modalOpen,
+    editing?.id ?? "create",
+    form,
+  );
 
   const enriched = useMemo(
     () => expenses.map((e) => enrichExpense(data, e)),
@@ -432,7 +438,9 @@ export function ExpensesManager() {
             <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
               취소
             </Button>
-            <Button type="submit">{editing ? "저장" : "등록"}</Button>
+            <SaveButton type="submit" dirty={formDirty}>
+              {editing ? "저장" : "등록"}
+            </SaveButton>
           </div>
         </form>
       </Modal>

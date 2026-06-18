@@ -9,12 +9,14 @@ import {
   MessagesSquare,
 } from "lucide-react";
 import { useData } from "@/context/DataContext";
+import { useDashboardPeriodScope } from "@/context/DashboardPeriodContext";
 import { useRole } from "@/context/RoleContext";
-import { Badge } from "@/components/ui/Badge";
+import { matchesPeriodDate } from "@/lib/date-filter-utils";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { QaThreadListModal } from "@/components/place-qa/QaThreadListModal";
+import { QaContractTodoTags } from "@/components/place-qa/QaContractTodoTags";
 import {
   getQaContractRows,
   getQaDashboardStats,
@@ -31,14 +33,15 @@ export function PlaceQaDashboardPanel({
 }) {
   const data = useData();
   const { currentUser, activeRole } = useRole();
+  const periodScope = useDashboardPeriodScope();
   const [qaModal, setQaModal] = useState<
     "all" | "needsReply" | "open" | "answered" | null
   >(null);
 
-  const contractIds = useMemo(
-    () => getVisibleContractIds(data, activeRole, currentUser.id),
-    [data, activeRole, currentUser.id],
-  );
+  const contractIds = useMemo(() => {
+    const visible = getVisibleContractIds(data, activeRole, currentUser.id);
+    return visible.filter((id) => periodScope.contractIds.has(id));
+  }, [data, activeRole, currentUser.id, periodScope.contractIds]);
 
   const stats = useMemo(
     () => getQaDashboardStats(data, contractIds),
@@ -47,7 +50,11 @@ export function PlaceQaDashboardPanel({
 
   const visibleThreads = useMemo(
     () =>
-      data.qaThreads.filter((t) => contractIds.includes(t.contractId)),
+      data.qaThreads.filter(
+        (t) =>
+          contractIds.includes(t.contractId) &&
+          matchesPeriodDate(t.lastMessageAt, periodScope.periodFilter),
+      ),
     [data.qaThreads, contractIds],
   );
 
@@ -165,55 +172,23 @@ export function PlaceQaDashboardPanel({
           아직 등록된 고객사 Q&A가 없습니다.
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
-            <thead>
-              <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-                <th className="pb-3 pr-4 font-medium">업체명</th>
-                <th className="pb-3 pr-4 font-medium">담당</th>
-                <th className="pb-3 pr-4 font-medium">문의</th>
-                <th className="pb-3 pr-4 font-medium">링크 의견</th>
-                <th className="pb-3 pr-4 font-medium">미답변</th>
-                <th className="pb-3 font-medium">최근</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.slice(0, 8).map((row) => (
-                <tr
-                  key={row.contractId}
-                  className="border-b border-zinc-800/50 text-zinc-400"
-                >
-                  <td className="py-3 pr-4">
-                    <Link
-                      href={`/contracts/${row.contractId}`}
-                      className="font-medium text-zinc-200 hover:text-emerald-400"
-                    >
-                      {row.clientName}
-                    </Link>
-                  </td>
-                  <td className="py-3 pr-4">{row.assignedStaffName}</td>
-                  <td className="py-3 pr-4 font-mono">{row.threadCount}건</td>
-                  <td className="py-3 pr-4 font-mono">
-                    {row.linkOpinionCount > 0 ? (
-                      <Badge variant="info">{row.linkOpinionCount}건</Badge>
-                    ) : (
-                      <span className="text-zinc-600">-</span>
-                    )}
-                  </td>
-                  <td className="py-3 pr-4">
-                    {row.needsReply > 0 ? (
-                      <Badge variant="danger">{row.needsReply}건</Badge>
-                    ) : (
-                      <span className="text-zinc-600">-</span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap py-3 text-xs">
-                    {row.lastActivity ?? "-"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="max-h-72 space-y-1 overflow-y-auto rounded-xl border border-zinc-800/80 bg-zinc-950/30 p-1">
+          {rows.slice(0, 12).map((row) => (
+            <Link
+              key={row.contractId}
+              href={`/place-qa?contract=${row.contractId}`}
+              className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg px-3 py-2.5 text-sm transition-colors hover:bg-cyan-500/5"
+            >
+              <span className="font-medium text-zinc-100">{row.clientName}</span>
+              <span className="text-zinc-600">·</span>
+              <QaContractTodoTags row={row} />
+              {row.threadCount > 0 && row.needsReply === 0 && (
+                <span className="text-[11px] text-zinc-500">
+                  문의 {row.threadCount}건
+                </span>
+              )}
+            </Link>
+          ))}
         </div>
       )}
     </Card>

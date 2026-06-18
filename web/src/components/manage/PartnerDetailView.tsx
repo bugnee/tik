@@ -15,6 +15,7 @@ import {
   Receipt,
 } from "lucide-react";
 import { useData } from "@/context/DataContext";
+import { useDashboardPeriod } from "@/context/DashboardPeriodContext";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import {
@@ -25,6 +26,7 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import { StatCard } from "@/components/ui/StatCard";
 import { PartnerFilterBadge } from "@/components/ui/PartnerFilterBadge";
 import { PartnerCollaborationHistoryPanel } from "@/components/partner/PartnerCollaborationHistoryPanel";
+import { PartnerExperienceSlotsPanel } from "@/components/experience/PartnerExperienceSlotsPanel";
 import { TaskChannelBadge } from "@/components/ui/TaskChannelBadge";
 import { formatKRW } from "@/lib/finance";
 import {
@@ -42,6 +44,7 @@ import { getUserName } from "@/lib/selectors";
 import type { AppData } from "@/lib/types";
 import { WORK_ORDER_STAGE_LABELS } from "@/lib/work-order-utils";
 import type { EnrichedWorkOrder } from "@/lib/work-order-utils";
+import { WorkOrderCostBreakdown } from "@/components/work-orders/WorkOrderCostBreakdown";
 
 export function PartnerDetailView({
   partnerId,
@@ -50,16 +53,20 @@ export function PartnerDetailView({
   partnerId: string;
   variant?: "admin" | "portal";
 }) {
+  const isPortal = variant === "portal";
   const data = useData();
-  const [periodFilter, setPeriodFilter] = useState<PeriodFilterValue>(
+  const dashboardPeriod = useDashboardPeriod();
+  const [localPeriodFilter, setLocalPeriodFilter] = useState<PeriodFilterValue>(
     createDefaultPeriodFilter,
   );
+  const periodFilter = isPortal ? dashboardPeriod.periodFilter : localPeriodFilter;
+  const setPeriodFilter = isPortal
+    ? dashboardPeriod.setPeriodFilter
+    : setLocalPeriodFilter;
   const summary = useMemo(
     () => buildPartnerDetailSummary(data, partnerId),
     [data, partnerId],
   );
-
-  const isPortal = variant === "portal";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -151,6 +158,8 @@ export function PartnerDetailView({
         </div>
       )}
 
+      {isPortal && <PartnerExperienceSlotsPanel partnerId={partnerId} />}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="진행 중 실행"
@@ -176,7 +185,7 @@ export function PartnerDetailView({
         <StatCard
           label="협업 이력"
           value={`${collaborationHistory.length}건`}
-          subValue="업무 · 원가 · 소개"
+          subValue="업무 · 원가 · 리셀러"
           icon={History}
           accent="cyan"
           onValueClick={scrollToCollaboration}
@@ -305,6 +314,7 @@ export function PartnerDetailView({
         partnerId={partnerId}
         periodFilter={periodFilter}
         onPeriodFilterChange={setPeriodFilter}
+        showPeriodFilter={!isPortal}
       />
     </div>
   );
@@ -346,7 +356,10 @@ function ActiveWorkCard({
           <p className="font-mono text-sm text-emerald-400">
             {formatKRW(order.totalAmount)}
           </p>
-          <p className="text-[10px] text-zinc-600">{order.costSummary}</p>
+          <WorkOrderCostBreakdown
+            lines={order.costLines}
+            className="mt-1 max-w-[240px]"
+          />
         </div>
       </div>
 

@@ -33,9 +33,16 @@ import { BonusPolicyPanel } from "@/components/bonus/BonusPolicyPanel";
 import { StaffBonusRequestPanel } from "@/components/bonus/StaffBonusRequestPanel";
 import { BonusPayScheduleNotice } from "@/components/bonus/BonusPayScheduleNotice";
 import { PlaceQaDashboardPanel } from "@/components/place-qa/PlaceQaDashboardPanel";
+import { StaffWorkConfirmPanel } from "@/components/work-orders/StaffWorkConfirmPanel";
 import { ContractBriefListModal } from "@/components/contracts/ContractBriefListModal";
 import { TeamMemberListModal } from "@/components/dashboard/TeamMemberListModal";
 import { useData } from "@/context/DataContext";
+import {
+  useDashboardPeriod,
+  useDashboardPeriodScope,
+  useRolePeriodContracts,
+} from "@/context/DashboardPeriodContext";
+import { filterContractsInPeriod } from "@/lib/dashboard-period-utils";
 import { useRole } from "@/context/RoleContext";
 import {
   calcBonusAmounts,
@@ -71,6 +78,8 @@ type TeamLeaderListModal =
 export function TeamLeaderDashboard() {
   const data = useData();
   const { currentUser } = useRole();
+  const { periodLabel } = useDashboardPeriod();
+  const periodScope = useDashboardPeriodScope();
   const [listModal, setListModal] = useState<TeamLeaderListModal>(null);
   const {
     extensionApprovals,
@@ -80,14 +89,14 @@ export function TeamLeaderDashboard() {
   } = data;
 
   const teamId = currentUser.teamId ?? "team-a";
-  const teamContracts = filterContractsByRole(
-    data,
-    "team_leader",
-    currentUser.id,
-  );
+  const teamContracts = useRolePeriodContracts("team_leader", currentUser.id);
   const myWorkContracts = useMemo(
-    () => filterLeaderWorkContracts(data, currentUser.id),
-    [data, currentUser.id],
+    () =>
+      filterContractsInPeriod(
+        filterLeaderWorkContracts(data, currentUser.id),
+        periodScope.contractIds,
+      ),
+    [data, currentUser.id, periodScope.contractIds],
   );
   const leaderLimit = getTeamLeaderLimit(data.bonusPolicy, currentUser.id);
   const myBonusTotal = useMemo(
@@ -144,8 +153,10 @@ export function TeamLeaderDashboard() {
     <div className="space-y-6">
       <DashboardHeader
         title="팀장 대시보드"
-        description="팀 관리 · 본인 담당 업무 · 연장 승인"
+        description={`${periodLabel} · 팀 관리 · 본인 담당 업무 · 연장 승인`}
       />
+
+      <StaffWorkConfirmPanel />
 
       {myWorkContracts.length > 0 && (
         <>

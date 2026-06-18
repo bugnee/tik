@@ -118,6 +118,11 @@ export const STAGE_CALENDAR_COLORS: Record<
     text: "text-amber-400",
     label: "승인대기",
   },
+  pending_staff_confirm: {
+    bar: "bg-violet-500",
+    text: "text-violet-400",
+    label: "담당확인",
+  },
   approved: {
     bar: "bg-cyan-500",
     text: "text-cyan-400",
@@ -142,5 +147,20 @@ export const STAGE_CALENDAR_COLORS: Record<
     bar: "bg-rose-500",
     text: "text-rose-400",
     label: "반려",
+  },
+  cancelled: {
+    bar: "bg-zinc-600",
+    text: "text-zinc-400",
+    label: "취소",
+  },
+  on_hold: {
+    bar: "bg-violet-500",
+    text: "text-violet-400",
+    label: "보류",
+  },
+  postponed: {
+    bar: "bg-orange-500",
+    text: "text-orange-400",
+    label: "연기",
   },
 };

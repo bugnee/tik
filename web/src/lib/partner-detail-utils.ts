@@ -33,6 +33,7 @@ import { getValidPostLinks } from "./execution-utils";
 
 export const ACTIVE_PARTNER_WORK_STAGES: WorkOrderStage[] = [
   "pending_approval",
+  "pending_staff_confirm",
   "approved",
   "delivered",
   "paid",
@@ -78,6 +79,7 @@ export interface PartnerPortalSummary {
   isReferralPartner: boolean;
   /** 처리 필요 — 기간 무관 */
   pendingApprovalCount: number;
+  pendingStaffConfirmCount: number;
   approvedCount: number;
   deliveredCount: number;
   paidStageCount: number;
@@ -140,7 +142,9 @@ export function getPartnerCompletedWorkOrders(
   return getPartnerWorkOrders(data, partnerId)
     .filter(
       (o) =>
-        COMPLETED_PARTNER_WORK_STAGES.includes(o.stage) || o.stage === "rejected",
+        COMPLETED_PARTNER_WORK_STAGES.includes(o.stage) ||
+        o.stage === "rejected" ||
+        o.stage === "cancelled",
     )
     .map((o) => enrichWorkOrder(data, o));
 }
@@ -327,7 +331,7 @@ export function buildPartnerCollaborationHistory(
       id: `ref-${row.id}`,
       kind: "referral",
       date: row.introducedAt,
-      title: "고객 소개 · 리셀러",
+      title: "리셀러 프로모션",
       detail:
         row.progressPercent != null
           ? `달성 ${row.progressPercent}%`
@@ -496,6 +500,9 @@ export function buildPartnerPortalSummary(
     isReferralPartner: partnerHasCategory(partner, "referral"),
     pendingApprovalCount: activeWorkOrders.filter(
       (o) => o.stage === "pending_approval",
+    ).length,
+    pendingStaffConfirmCount: activeWorkOrders.filter(
+      (o) => o.stage === "pending_staff_confirm",
     ).length,
     approvedCount: activeWorkOrders.filter((o) => o.stage === "approved")
       .length,

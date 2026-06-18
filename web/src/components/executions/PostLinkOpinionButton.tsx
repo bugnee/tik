@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { ImagePlus, MessageSquare, X } from "lucide-react";
 import { useData } from "@/context/DataContext";
+import { usePlaceQa } from "@/features/place-qa/usePlaceQa";
 import { useRole } from "@/context/RoleContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -27,8 +28,8 @@ export function PostLinkOpinionButton({
   link,
 }: PostLinkOpinionButtonProps) {
   const data = useData();
+  const { addPostLinkOpinion } = usePlaceQa();
   const { currentUser, activeRole } = useRole();
-  const { addPostLinkOpinion } = data;
 
   const existingCount = getPostLinkOpinionsForLink(
     data,

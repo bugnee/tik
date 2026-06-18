@@ -22,7 +22,7 @@ type ContractBriefListModalProps = {
   description?: string;
   contracts: Contract[];
   data: AppData;
-  /** 소개 프로모션 목록 등 — 월 소개비(10%) 표시 */
+  /** 리셀러 프로모션 목록 등 — 월 리셀러 수수료(10%) 표시 */
   showReferralFee?: boolean;
 };
 
@@ -71,7 +71,7 @@ export function ContractBriefListModal({
                   {referralFee != null && (
                     <span className="text-rose-400/90">
                       {" "}
-                      · 소개비 {formatKRW(referralFee)}
+                      · 리셀러 수수료 {formatKRW(referralFee)}
                     </span>
                   )}
                 </p>
@@ -111,7 +111,7 @@ export function ContractBriefListModal({
 
               <div className="flex shrink-0 items-center gap-2">
                 {c.isExtension && <Badge variant="success">연장</Badge>}
-                {c.hasReferralPromo && <Badge variant="info">소개</Badge>}
+                {c.hasReferralPromo && <Badge variant="info">리셀러</Badge>}
                 {c.status === "terminated" && (
                   <Badge variant="danger">해지</Badge>
                 )}

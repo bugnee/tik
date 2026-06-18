@@ -8,6 +8,11 @@ import {
   getTaskChannelBadgeClassName,
   getWorkOrderTaskLabel,
 } from "@/lib/task-channel-utils";
+import {
+  getGlossaryForExecutionType,
+  getGlossaryForTaskChannel,
+} from "@/lib/marketing-glossary";
+import { GlossaryHint } from "@/components/ui/GlossaryHint";
 
 export function TaskChannelBadge({
   data,
@@ -36,6 +41,17 @@ export function TaskChannelBadge({
       ? getExecutionTypeBadgeClassName(data.taskChannels, executionType)
       : getTaskChannelBadgeClassName(data.taskChannels, "blog");
 
+  const glossaryEntry = taskType
+    ? getGlossaryForTaskChannel(
+        data.taskChannels.find((c) => c.id === taskType) ?? {
+          id: taskType,
+          label: resolvedLabel,
+        },
+      )
+    : executionType
+      ? getGlossaryForExecutionType(executionType)
+      : null;
+
   return (
     <span
       className={cn(
@@ -44,7 +60,9 @@ export function TaskChannelBadge({
         className,
       )}
     >
-      {resolvedLabel}
+      <GlossaryHint entry={glossaryEntry} underline={false}>
+        {resolvedLabel}
+      </GlossaryHint>
     </span>
   );
 }

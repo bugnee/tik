@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { Eye, EyeOff, Link2, Lock, Save, User } from "lucide-react";
 import { useData } from "@/context/DataContext";
+import { usePlaceQa } from "@/features/place-qa/usePlaceQa";
 import { useRole } from "@/context/RoleContext";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/FormFields";
 import {
@@ -13,11 +15,12 @@ import {
   getPlaceCredentialsForContract,
 } from "@/lib/place-qa-utils";
 import { getUserName } from "@/lib/selectors";
+import { valuesEqual } from "@/lib/form-dirty";
 
 export function PlaceCredentialsPanel({ contractId }: { contractId: string }) {
   const data = useData();
+  const { upsertPlaceCredentials } = usePlaceQa();
   const { currentUser, activeRole } = useRole();
-  const { upsertPlaceCredentials } = data;
 
   const existing = getPlaceCredentialsForContract(data, contractId);
   const canEdit = canManagePlaceCredentials(activeRole);
@@ -28,6 +31,16 @@ export function PlaceCredentialsPanel({ contractId }: { contractId: string }) {
   const [password, setPassword] = useState(existing?.password ?? "");
   const [showPassword, setShowPassword] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  const savedSnapshot = {
+    placeUrl: existing?.placeUrl ?? "",
+    loginId: existing?.loginId ?? "",
+    password: existing?.password ?? "",
+  };
+  const isDirty = !valuesEqual(
+    { placeUrl, loginId, password },
+    savedSnapshot,
+  );
 
   useEffect(() => {
     setPlaceUrl(existing?.placeUrl ?? "");
@@ -94,10 +107,10 @@ export function PlaceCredentialsPanel({ contractId }: { contractId: string }) {
             />
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit">
+            <SaveButton type="submit" dirty={isDirty}>
               <Save className="h-4 w-4" />
               저장
-            </Button>
+            </SaveButton>
             {saved && (
               <span className="text-sm text-emerald-400">저장되었습니다.</span>
             )}

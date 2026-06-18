@@ -19,7 +19,12 @@ import { BonusPayScheduleNotice } from "@/components/bonus/BonusPayScheduleNotic
 import { ContractBriefListModal } from "@/components/contracts/ContractBriefListModal";
 import { DashboardBonusSection } from "@/components/dashboard/DashboardBonusSection";
 import { PlaceQaDashboardPanel } from "@/components/place-qa/PlaceQaDashboardPanel";
+import { StaffWorkConfirmPanel } from "@/components/work-orders/StaffWorkConfirmPanel";
 import { useData } from "@/context/DataContext";
+import {
+  useDashboardPeriod,
+  useRolePeriodContracts,
+} from "@/context/DashboardPeriodContext";
 import { useRole } from "@/context/RoleContext";
 import {
   calcBonusAmounts,
@@ -41,11 +46,8 @@ import {
 export function StaffDashboard() {
   const data = useData();
   const { currentUser } = useRole();
-  const contracts = filterContractsByRole(
-    data,
-    "staff",
-    currentUser.id,
-  );
+  const { periodLabel } = useDashboardPeriod();
+  const contracts = useRolePeriodContracts("staff", currentUser.id);
   const bonus = getStaffBonus(contracts, data.bonusPolicy, data);
   const staffPct = data.bonusPolicy.staffPercent[currentUser.id] ?? 0;
   const eligibleExtensions = contracts.filter((c) => isBonusEligible(c));
@@ -72,7 +74,7 @@ export function StaffDashboard() {
     <div className="space-y-6">
       <DashboardHeader
         title="실무 담당자 대시보드"
-        description={`${currentUser.name}님이 담당하는 ${contracts.length}개 업체 현황`}
+        description={`${periodLabel} · ${currentUser.name}님이 담당하는 ${contracts.length}개 업체 현황`}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -110,6 +112,8 @@ export function StaffDashboard() {
         data={data}
       />
 
+      <StaffWorkConfirmPanel />
+
       <PlaceQaDashboardPanel />
 
       <Card glow>
@@ -138,7 +142,7 @@ export function StaffDashboard() {
                       <Badge variant="success">연장</Badge>
                     )}
                     {c.hasReferralPromo && (
-                      <Badge variant="info">소개 10%</Badge>
+                      <Badge variant="info">리셀러 10%</Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-2">

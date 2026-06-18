@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { useData } from "@/context/DataContext";
+import { useFinance } from "@/features/finance/useFinance";
 import { useRole } from "@/context/RoleContext";
 import {
   calculatePL,
@@ -23,13 +24,15 @@ import { getFinancePayoutQueue } from "@/lib/expense-payout-utils";
 import { PAYOUT_LABELS } from "@/lib/types";
 import Link from "next/link";
 import { FinanceManagerDashboard } from "@/components/dashboard/FinanceManagerDashboard";
-import { DashboardWorkStatusPanel } from "@/components/dashboard/DashboardWorkStatusPanel";
+import { BonusPayrollSummaryPanel } from "@/components/bonus/BonusPayrollSummaryPanel";
+import { SampleDataResetPanel } from "@/components/settings/SampleDataResetPanel";
 import { TabBar } from "@/components/ui/TabBar";
 
 export function FinancePage() {
   const { canViewFinancials, activeRole } = useRole();
   const data = useData();
-  const { contracts, expenses, markExpensesPaid } = data;
+  const { expenses, markExpensesPaid } = useFinance();
+  const { contracts } = data;
 
   const pl = calculatePL(contracts, expenses, data.bonusPolicy, data);
   const enrichedExpenses = useMemo(
@@ -93,11 +96,12 @@ export function FinancePage() {
 
       {tab === "ops" && activeRole === "finance_manager" ? (
         <>
-          <DashboardWorkStatusPanel />
           <FinanceManagerDashboard embedded />
+          <SampleDataResetPanel compact />
         </>
       ) : (
         <>
+          <BonusPayrollSummaryPanel />
           <PLSection breakdown={pl} unpaidTotal={unpaidTotal} />
           <SettlementChecklist
             expenses={enrichedExpenses}
@@ -132,7 +136,7 @@ function PLSection({
     { label: "담당자 연장 성과급(세전)", value: breakdown.staffBonus, sign: "-" },
     { label: "팀장 연장 성과급(세전)", value: breakdown.teamLeaderBonus, sign: "-" },
     { label: "임직원 연장 성과금(세전)", value: breakdown.executiveBonus, sign: "-" },
-    { label: "외부 소개비 (10%)", value: breakdown.referralFee, sign: "-" },
+    { label: "리셀러 수수료 (10%)", value: breakdown.referralFee, sign: "-" },
   ];
 
   const marginRate =
@@ -145,7 +149,7 @@ function PLSection({
       <Card className="lg:col-span-2" glow>
         <CardHeader
           title="전사 P&L · 순이익"
-          subtitle="총매출 − 파트너비 · 전체 비용 − 성과급(세전) − 소개비 · 15일 마감 · 25일 급여 합산"
+          subtitle="총매출 − 파트너비 · 전체 비용 − 성과급(세전) − 리셀러 수수료 · 15일 마감 · 25일 급여 합산"
         />
         <div className="space-y-2">
           {rows.map((row) => (
@@ -278,6 +282,7 @@ function SettlementChecklist({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+              <th className="w-10 pb-3 pr-2 text-center font-medium">#</th>
               <th className="pb-3 pr-3">
                 <input
                   type="checkbox"
@@ -296,11 +301,14 @@ function SettlementChecklist({
             </tr>
           </thead>
           <tbody>
-            {unpaid.map((e) => (
+            {unpaid.map((e, index) => (
               <tr
                 key={e.id}
                 className="border-b border-zinc-800/40 text-zinc-400"
               >
+                <td className="py-3 pr-2 text-center font-mono text-xs tabular-nums text-zinc-500">
+                  {index + 1}
+                </td>
                 <td className="py-3 pr-3">
                   <input
                     type="checkbox"

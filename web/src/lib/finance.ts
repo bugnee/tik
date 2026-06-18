@@ -2,7 +2,7 @@ import type { AppData, BonusPolicySettings, Contract, Expense } from "./types";
 import { sumPolicyBonuses } from "./bonus-utils";
 
 /**
- * 순이익 = 총매출 − 모든 집행비용 − 성과급(세전) − 소개비
+ * 순이익 = 총매출 − 모든 집행비용 − 성과급(세전) − 리셀러 수수료
  * - 모든 비용: 입금 여부와 관계없이 전체 원가
  * - 파트너 지급비용: partnerId가 연결된 원가
  */

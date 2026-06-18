@@ -131,12 +131,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [hydrated, syncProfile]);
 
   useEffect(() => {
-    if (!accountProfile?.googleId) return;
+    if (!accountProfile) return;
     const latest = accountProfiles.find(
-      (p) => p.googleId === accountProfile.googleId,
+      (p) =>
+        (accountProfile.googleId && p.googleId === accountProfile.googleId) ||
+        (accountProfile.email && p.email === accountProfile.email),
     );
     if (latest) setAccountProfile(latest);
-  }, [accountProfiles, accountProfile?.googleId]);
+  }, [accountProfiles, accountProfile?.googleId, accountProfile?.email]);
 
   const status: AuthStatus = useMemo(() => {
     if (!bootstrapped || !hydrated) return "loading";

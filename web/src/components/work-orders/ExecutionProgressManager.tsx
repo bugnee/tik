@@ -4,23 +4,32 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Calendar,
+  Ban,
   CheckCircle2,
   ClipboardList,
+  Clock,
   ExternalLink,
   PackageCheck,
+  Pause,
+  Play,
   Send,
   Users,
 } from "lucide-react";
 import { OrderReadyQueue } from "@/components/work-orders/OrderReadyQueue";
+import { WorkOrderCostBreakdown } from "@/components/work-orders/WorkOrderCostBreakdown";
 import { ContractProgressPanel } from "@/components/work-orders/ContractProgressPanel";
 import { ContractWorkCalendar } from "@/components/experience/ContractWorkCalendar";
 import { ExperienceCampaignPanel } from "@/components/experience/ExperienceCampaignPanel";
 import { DashboardWorkStatusPanel } from "@/components/dashboard/DashboardWorkStatusPanel";
+import { StaffWorkConfirmPanel } from "@/components/work-orders/StaffWorkConfirmPanel";
 import { useData } from "@/context/DataContext";
+import { useWorkOrders } from "@/features/work-orders/useWorkOrders";
 import { useRole } from "@/context/RoleContext";
 import { Badge } from "@/components/ui/Badge";
 import { TaskChannelBadge } from "@/components/ui/TaskChannelBadge";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
+import { valuesEqual } from "@/lib/form-dirty";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { PageHeader, SearchBar } from "@/components/ui/DataTable";
 import { Input, Select } from "@/components/ui/FormFields";
@@ -56,6 +65,8 @@ import {
   getContractExperienceCampaigns,
   getExperienceTimelineEntries,
 } from "@/lib/experience-campaign-utils";
+import { isClientDepositBlockingWork } from "@/lib/client-deposit-utils";
+import { ClientDepositRequestPanel } from "@/components/client-portal/ClientDepositRequestPanel";
 
 const STAGE_VARIANT: Record<
   WorkOrder["stage"],
@@ -63,26 +74,40 @@ const STAGE_VARIANT: Record<
 > = {
   draft: "default",
   pending_approval: "warning",
+  pending_staff_confirm: "warning",
   approved: "info",
   delivered: "warning",
   paid: "success",
   order_ready: "success",
   rejected: "danger",
+  cancelled: "default",
+  on_hold: "warning",
+  postponed: "warning",
 };
+
+/** 취소·보류·연기 가능 단계 */
+const PAUSABLE_STAGES: WorkOrder["stage"][] = [
+  "pending_approval",
+  "pending_staff_confirm",
+  "approved",
+  "delivered",
+];
 
 export function ExecutionProgressManager() {
   const data = useData();
-  const { currentUser } = useRole();
   const {
-    contracts,
-    partners,
-    partnerFilterDefinitions,
     workOrders,
     ensureContractWorkOrders,
     updateWorkOrder,
     submitWorkOrder,
     confirmWorkOrderPayment,
-  } = data;
+    cancelWorkOrder,
+    holdWorkOrder,
+    postponeWorkOrder,
+    resumeWorkOrder,
+  } = useWorkOrders();
+  const { currentUser } = useRole();
+  const { contracts, partners, partnerFilterDefinitions } = data;
 
   const [tab, setTab] = useState<"timeline" | "order_ready" | "experience">(
     "timeline",
@@ -91,6 +116,13 @@ export function ExecutionProgressManager() {
   const [contractSearch, setContractSearch] = useState("");
   const [fieldFilter, setFieldFilter] = useState<WorkOrderTaskType | null>(null);
   const [editOrder, setEditOrder] = useState<WorkOrder | null>(null);
+  const [editBaseline, setEditBaseline] = useState<{
+    partnerId: string;
+    costLines: WorkOrderCostLine[];
+  } | null>(null);
+  const [postponeOrder, setPostponeOrder] = useState<WorkOrder | null>(null);
+  const [postponeDate, setPostponeDate] = useState("");
+  const [postponeReason, setPostponeReason] = useState("");
   const [partnerId, setPartnerId] = useState("");
   const [costLines, setCostLines] = useState<WorkOrderCostLine[]>(emptyCostLines());
 
@@ -142,6 +174,8 @@ export function ExecutionProgressManager() {
   );
 
   const contract = visibleContracts.find((c) => c.id === contractId);
+  const depositBlocked = contract ? isClientDepositBlockingWork(contract) : false;
+  const workBlockTitle = "고객사 광고비 입금 확인 후 이용 가능합니다";
   const timeline = useMemo(() => {
     const list = filterWorkOrdersByContract(workOrders, contractId);
     return sortWorkOrdersTimeline(list).map((o) => enrichWorkOrder(data, o));
@@ -239,16 +273,25 @@ export function ExecutionProgressManager() {
 
   function openEdit(order: WorkOrder) {
     const linkedContract = visibleContracts.find((c) => c.id === order.contractId);
-    setEditOrder(order);
-    setPartnerId(order.partnerId ?? linkedContract?.referrerPartnerId ?? "");
-    setCostLines(
+    const pid = order.partnerId ?? linkedContract?.referrerPartnerId ?? "";
+    const lines =
       order.costLines.some((l) => l.amount > 0)
         ? order.costLines
         : order.taskType === "referral" && linkedContract
           ? buildReferralCostLines(linkedContract.monthlyFee)
-          : emptyCostLines(),
-    );
+          : emptyCostLines();
+    setEditOrder(order);
+    setPartnerId(pid);
+    setCostLines(lines);
+    setEditBaseline({ partnerId: pid, costLines: lines });
   }
+
+  const editDirty = Boolean(
+    editOrder &&
+      editBaseline &&
+      (partnerId !== editBaseline.partnerId ||
+        !valuesEqual(costLines, editBaseline.costLines)),
+  );
 
   function saveDraft() {
     if (!editOrder) return;
@@ -267,6 +310,42 @@ export function ExecutionProgressManager() {
   function markPaid(orderId: string) {
     const ok = confirmWorkOrderPayment(orderId, currentUser.id);
     if (!ok) alert("입금 확인할 수 없습니다.");
+  }
+
+  function handleCancel(order: WorkOrder) {
+    const reason = window.prompt("취소 사유 (선택)");
+    if (reason === null) return;
+    const ok = cancelWorkOrder(order.id, reason || undefined);
+    if (!ok) alert("취소할 수 없는 단계입니다.");
+  }
+
+  function handleHold(order: WorkOrder) {
+    const reason = window.prompt("보류 사유 (선택)");
+    if (reason === null) return;
+    const ok = holdWorkOrder(order.id, reason || undefined);
+    if (!ok) alert("보류할 수 없는 단계입니다.");
+  }
+
+  function openPostpone(order: WorkOrder) {
+    setPostponeOrder(order);
+    setPostponeDate(order.dueDate);
+    setPostponeReason("");
+  }
+
+  function confirmPostpone() {
+    if (!postponeOrder || !postponeDate.trim()) return;
+    const ok = postponeWorkOrder(
+      postponeOrder.id,
+      postponeDate.trim(),
+      postponeReason.trim() || undefined,
+    );
+    if (!ok) alert("연기할 수 없는 단계입니다.");
+    else setPostponeOrder(null);
+  }
+
+  function handleResume(order: WorkOrder) {
+    const ok = resumeWorkOrder(order.id);
+    if (!ok) alert("재개할 수 없는 단계입니다.");
   }
 
   const contractCampaigns = useMemo(
@@ -344,7 +423,19 @@ export function ExecutionProgressManager() {
           </Card>
           {contractId ? (
             <div className="grid gap-6 xl:grid-cols-2">
-              <ExperienceCampaignPanel contractId={contractId} mode="staff" />
+              {contract && depositBlocked && (
+                <ClientDepositRequestPanel
+                  contract={contract}
+                  fundBudget={data.fundBudget}
+                  variant="staff"
+                  className="xl:col-span-2"
+                />
+              )}
+              <ExperienceCampaignPanel
+                contractId={contractId}
+                mode="staff"
+                readOnly={depositBlocked}
+              />
               <ContractWorkCalendar
                 data={data}
                 contractId={contractId}
@@ -404,6 +495,17 @@ export function ExecutionProgressManager() {
               </p>
             )}
           </Card>
+
+          {contract && depositBlocked && (
+            <ClientDepositRequestPanel
+              contract={contract}
+              fundBudget={data.fundBudget}
+              variant="staff"
+              className="mb-4"
+            />
+          )}
+
+          <StaffWorkConfirmPanel className="mb-4" />
 
           <DashboardWorkStatusPanel className="mb-4" />
 
@@ -466,31 +568,108 @@ export function ExecutionProgressManager() {
                               ` · ${formatKRW(row.order.totalAmount)}`}
                           </p>
                         )}
-                        {row.order.costSummary && (
-                          <p className="mt-0.5 text-xs text-zinc-600">
-                            {row.order.costSummary}
-                          </p>
+                        {row.order.costLines.some((l) => l.amount > 0) && (
+                          <WorkOrderCostBreakdown
+                            lines={row.order.costLines}
+                            align="start"
+                            className="mt-1"
+                          />
                         )}
                         {row.order.rejectedReason && (
                           <p className="mt-1 text-xs text-rose-400">
                             반려: {row.order.rejectedReason}
                           </p>
                         )}
+                        {row.order.stage === "postponed" &&
+                          row.order.postponedDueDate && (
+                            <p className="mt-1 text-xs text-orange-400">
+                              연기 마감 {row.order.postponedDueDate}
+                            </p>
+                          )}
+                        {(row.order.stage === "cancelled" ||
+                          row.order.stage === "on_hold" ||
+                          row.order.stage === "postponed") &&
+                          row.order.memo && (
+                            <p className="mt-1 text-xs text-zinc-500">
+                              {row.order.memo}
+                            </p>
+                          )}
+                        {row.order.partnerApprovalNote && (
+                          <p className="mt-1 text-xs text-violet-300">
+                            파트너 피드백: {row.order.partnerApprovalNote}
+                          </p>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {["draft", "rejected"].includes(row.order.stage) && (
-                          <Button size="sm" onClick={() => openEdit(row.order)}>
+                          <Button
+                            size="sm"
+                            disabled={depositBlocked}
+                            title={depositBlocked ? workBlockTitle : undefined}
+                            onClick={() => openEdit(row.order)}
+                          >
                             파트너·비용 설정
                           </Button>
                         )}
                         {row.order.stage === "delivered" && (
-                          <Button size="sm" onClick={() => markPaid(row.order.id)}>
+                          <Button
+                            size="sm"
+                            disabled={depositBlocked}
+                            title={depositBlocked ? workBlockTitle : undefined}
+                            onClick={() => markPaid(row.order.id)}
+                          >
                             <CheckCircle2 className="h-3.5 w-3.5" />
                             입금 확인
                           </Button>
                         )}
                         {row.order.stage === "order_ready" && (
                           <Badge variant="success">오더준 반영됨</Badge>
+                        )}
+                        {PAUSABLE_STAGES.includes(row.order.stage) && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={depositBlocked}
+                              title={depositBlocked ? workBlockTitle : undefined}
+                              onClick={() => handleHold(row.order)}
+                            >
+                              <Pause className="h-3.5 w-3.5" />
+                              보류
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={depositBlocked}
+                              title={depositBlocked ? workBlockTitle : undefined}
+                              onClick={() => openPostpone(row.order)}
+                            >
+                              <Clock className="h-3.5 w-3.5" />
+                              연기
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              disabled={depositBlocked}
+                              title={depositBlocked ? workBlockTitle : undefined}
+                              onClick={() => handleCancel(row.order)}
+                            >
+                              <Ban className="h-3.5 w-3.5" />
+                              취소
+                            </Button>
+                          </>
+                        )}
+                        {(row.order.stage === "on_hold" ||
+                          row.order.stage === "postponed") && (
+                          <Button
+                            size="sm"
+                            disabled={depositBlocked}
+                            title={depositBlocked ? workBlockTitle : undefined}
+                            onClick={() => handleResume(row.order)}
+                          >
+                            <Play className="h-3.5 w-3.5" />
+                            재개
+                          </Button>
                         )}
                       </div>
                     </div>
@@ -660,12 +839,55 @@ export function ExecutionProgressManager() {
               <Button variant="secondary" onClick={() => setEditOrder(null)}>
                 취소
               </Button>
-              <Button variant="secondary" onClick={saveDraft}>
+              <SaveButton
+                variant="secondary"
+                dirty={editDirty}
+                disabled={depositBlocked}
+                title={depositBlocked ? workBlockTitle : undefined}
+                onClick={saveDraft}
+              >
                 임시 저장
-              </Button>
-              <Button onClick={sendToPartner}>
+              </SaveButton>
+              <Button
+                disabled={depositBlocked}
+                title={depositBlocked ? workBlockTitle : undefined}
+                onClick={sendToPartner}
+              >
                 <Send className="h-3.5 w-3.5" />
                 파트너 승인 요청
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!postponeOrder}
+        onClose={() => setPostponeOrder(null)}
+        title={postponeOrder?.title ?? "일정 연기"}
+        size="sm"
+      >
+        {postponeOrder && (
+          <div className="space-y-4">
+            <Input
+              label="변경 마감일"
+              type="date"
+              value={postponeDate}
+              onChange={(e) => setPostponeDate(e.target.value)}
+            />
+            <Input
+              label="연기 사유 (선택)"
+              value={postponeReason}
+              onChange={(e) => setPostponeReason(e.target.value)}
+              placeholder="일정 조율 · 고객 요청 등"
+            />
+            <div className="flex justify-end gap-2 border-t border-zinc-800 pt-4">
+              <Button variant="secondary" onClick={() => setPostponeOrder(null)}>
+                닫기
+              </Button>
+              <Button onClick={confirmPostpone} disabled={!postponeDate.trim()}>
+                <Clock className="h-3.5 w-3.5" />
+                연기 적용
               </Button>
             </div>
           </div>

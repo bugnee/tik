@@ -46,7 +46,7 @@ export function PartnerCollaborationHistoryPanel({
       <Card glow={glow}>
         <CardHeader
           title="협업 이력"
-          subtitle={`${periodLabel} · 완료 업무 · 원가 지급 · 고객 소개`}
+          subtitle={`${periodLabel} · 완료 업무 · 원가 지급 · 리셀러`}
         />
 
         {showPeriodFilter && (
@@ -103,7 +103,7 @@ function CollaborationPeriodSummaryTable({
     },
     {
       key: "referral",
-      label: "고객 소개",
+      label: "리셀러",
       icon: Users,
       count: summary.referralCount,
       amount: summary.referralAmount,
@@ -166,7 +166,7 @@ function CollaborationRow({ item }: { item: PartnerCollaborationItem }) {
       ? "집행 완료"
       : item.kind === "expense"
         ? "원가 지급"
-        : "고객 소개";
+        : "리셀러";
 
   const postLinks = item.postLinks ?? [];
   const hasExtras = !!(item.memo?.trim() || postLinks.length > 0);

@@ -1,5 +1,9 @@
 import { DEMO_TODAY } from "@/lib/contract-lifecycle";
-import { filterContractsByRole, getTeamName, getUserName } from "@/lib/selectors";
+import {
+  filterWorkOrdersInPeriod,
+  type DashboardPeriodScope,
+} from "@/lib/dashboard-period-utils";
+import { filterContractsByRole, getMonthlyProgressRate, getTeamName, getUserName } from "@/lib/selectors";
 import {
   enrichWorkOrder,
   filterWorkOrdersByPartner,
@@ -11,27 +15,104 @@ const COMPLETED_STAGES: WorkOrderStage[] = ["order_ready", "paid"];
 
 const IN_PROGRESS_STAGES: WorkOrderStage[] = [
   "pending_approval",
+  "pending_staff_confirm",
   "approved",
   "delivered",
 ];
+
+const PAUSED_STAGES: WorkOrderStage[] = ["cancelled", "on_hold", "postponed"];
 
 export type WorkStatusCategory =
   | "in_progress"
   | "due_today"
   | "overdue"
+  | "cancelled"
+  | "on_hold"
+  | "postponed"
   | "completed";
 
 export const WORK_STATUS_CATEGORY_LABELS: Record<WorkStatusCategory, string> = {
   in_progress: "진행중",
   due_today: "오늘 마감",
   overdue: "마감초과",
+  cancelled: "취소",
+  on_hold: "보류",
+  postponed: "연기",
   completed: "완료",
+};
+
+/** 업무현황 집계·내역 테이블용 (완료 제외) */
+export const WORK_STATUS_BREAKDOWN_CATEGORIES: WorkStatusCategory[] = [
+  "in_progress",
+  "due_today",
+  "overdue",
+  "cancelled",
+  "on_hold",
+  "postponed",
+];
+
+export type WorkStatusCategoryMeta = {
+  accent: string;
+  barClassName: string;
+  description: string;
+  shortLabel: string;
+};
+
+export const WORK_STATUS_CATEGORY_META: Record<
+  WorkStatusCategory,
+  WorkStatusCategoryMeta
+> = {
+  in_progress: {
+    accent: "text-cyan-400",
+    barClassName: "bg-cyan-500",
+    description: "파트너 승인 · 결과 입력 · 입금 대기 등 실행 중",
+    shortLabel: "진행",
+  },
+  due_today: {
+    accent: "text-amber-400",
+    barClassName: "bg-amber-500",
+    description: "오늘 마감 · 미완료 업무",
+    shortLabel: "오늘",
+  },
+  overdue: {
+    accent: "text-rose-400",
+    barClassName: "bg-rose-500",
+    description: "마감일 경과 · 미완료 업무",
+    shortLabel: "초과",
+  },
+  cancelled: {
+    accent: "text-zinc-400",
+    barClassName: "bg-zinc-500",
+    description: "업무 취소 · 더 이상 진행하지 않음",
+    shortLabel: "취소",
+  },
+  on_hold: {
+    accent: "text-violet-400",
+    barClassName: "bg-violet-500",
+    description: "일시 보류 · 재개 시 이전 단계로 복원",
+    shortLabel: "보류",
+  },
+  postponed: {
+    accent: "text-orange-400",
+    barClassName: "bg-orange-500",
+    description: "일정 연기 · 변경된 마감일 기준 재개",
+    shortLabel: "연기",
+  },
+  completed: {
+    accent: "text-emerald-400",
+    barClassName: "bg-emerald-500",
+    description: "오더준비 · 입금완료 등 처리 완료 실행 업무",
+    shortLabel: "완료",
+  },
 };
 
 export const ACTIVE_WORK_STATUS_CATEGORIES: WorkStatusCategory[] = [
   "in_progress",
   "due_today",
   "overdue",
+  "cancelled",
+  "on_hold",
+  "postponed",
 ];
 
 export const STAFF_TEAM_WORK_STATUS_CATEGORIES: WorkStatusCategory[] = [
@@ -58,6 +139,7 @@ export type WorkStatusAssigneeBreakdown = {
   assigneeName: string;
   roleLabel: string;
   summary: DashboardWorkStatusSummary;
+  executionProgressPercent: number;
 };
 
 export type WorkStatusTeamLeaderBreakdown = {
@@ -66,6 +148,7 @@ export type WorkStatusTeamLeaderBreakdown = {
   teamId: string;
   teamName: string;
   summary: DashboardWorkStatusSummary;
+  executionProgressPercent: number;
   assignees: WorkStatusAssigneeBreakdown[];
 };
 
@@ -100,6 +183,29 @@ export function isCompletedWorkOrder(stage: WorkOrderStage): boolean {
   return COMPLETED_STAGES.includes(stage);
 }
 
+export function isCancelledWorkOrder(order: WorkOrder): boolean {
+  return order.stage === "cancelled";
+}
+
+export function isOnHoldWorkOrder(order: WorkOrder): boolean {
+  return order.stage === "on_hold";
+}
+
+export function isPostponedWorkOrder(order: WorkOrder): boolean {
+  return order.stage === "postponed";
+}
+
+export function isPausedWorkOrderStage(stage: WorkOrderStage): boolean {
+  return PAUSED_STAGES.includes(stage);
+}
+
+export function isActiveWorkOrder(order: WorkOrder): boolean {
+  if (isCompletedWorkOrder(order.stage)) return false;
+  if (order.stage === "draft" || order.stage === "rejected") return false;
+  if (isPausedWorkOrderStage(order.stage)) return false;
+  return true;
+}
+
 export function getWorkOrderCompletedDate(order: WorkOrder): string {
   return (
     order.paidAt ??
@@ -108,10 +214,6 @@ export function getWorkOrderCompletedDate(order: WorkOrder): string {
     order.requestedAt ??
     order.dueDate
   );
-}
-
-export function isActiveWorkOrder(order: WorkOrder): boolean {
-  return !isCompletedWorkOrder(order.stage);
 }
 
 export function isInProgressExecution(order: WorkOrder): boolean {
@@ -132,40 +234,75 @@ export function isOverdueWorkOrder(
   return isActiveWorkOrder(order) && order.dueDate < today;
 }
 
+export type DashboardPeriodScopeInput = Pick<
+  DashboardPeriodScope,
+  "contractIds" | "periodFilter" | "referenceDate"
+>;
+
+function resolveToday(
+  periodScope?: DashboardPeriodScopeInput,
+  today = DEMO_TODAY,
+): string {
+  return periodScope?.referenceDate ?? today;
+}
+
+/** periodScope.contractIds가 Set이 아닐 때(직렬화 등)도 안전하게 조회 */
+function scopeContractIds(
+  periodScope?: DashboardPeriodScopeInput,
+): Set<string> | undefined {
+  const ids = periodScope?.contractIds;
+  if (!ids) return undefined;
+  if (ids instanceof Set) return ids;
+  return new Set(ids as Iterable<string>);
+}
+
 export function getRoleVisibleWorkOrders(
   data: AppData,
   role: UserRole,
   userId: string,
+  periodScope?: DashboardPeriodScopeInput,
 ): WorkOrder[] {
   if (role === "partner") {
     const partnerId = data.users.find((u) => u.id === userId)?.partnerId;
     if (!partnerId) return [];
-    return filterWorkOrdersByPartner(data.workOrders, partnerId);
+    let orders = filterWorkOrdersByPartner(data.workOrders, partnerId);
+    if (periodScope?.periodFilter) {
+      orders = filterWorkOrdersInPeriod(orders, periodScope.periodFilter);
+    }
+    return orders;
   }
+
+  const periodContractIds = scopeContractIds(periodScope);
 
   const contractIds = new Set(
     filterContractsByRole(data, role, userId)
-      .filter((c) => c.status === "active")
+      .filter((c) => {
+        if (periodContractIds && !periodContractIds.has(c.id)) {
+          return false;
+        }
+        if (!periodScope && c.status !== "active") return false;
+        return true;
+      })
       .map((c) => c.id),
   );
 
-  return data.workOrders.filter((order) => contractIds.has(order.contractId));
+  let orders = data.workOrders.filter((order) => contractIds.has(order.contractId));
+  if (periodScope) {
+    orders = filterWorkOrdersInPeriod(orders, periodScope.periodFilter);
+  }
+  return orders;
 }
 
 export function calcDashboardWorkStatus(
   data: AppData,
   role: UserRole,
   userId: string,
+  periodScope?: DashboardPeriodScopeInput,
   today = DEMO_TODAY,
 ): DashboardWorkStatusSummary {
-  const orders = getRoleVisibleWorkOrders(data, role, userId);
-  return {
-    in_progress: orders.filter(isInProgressExecution).length,
-    due_today: orders.filter((order) => isDueTodayWorkOrder(order, today))
-      .length,
-    overdue: orders.filter((order) => isOverdueWorkOrder(order, today)).length,
-    completed: orders.filter((order) => isCompletedWorkOrder(order.stage)).length,
-  };
+  const referenceDate = resolveToday(periodScope, today);
+  const orders = getRoleVisibleWorkOrders(data, role, userId, periodScope);
+  return calcSummaryFromOrders(orders, referenceDate);
 }
 
 export function getDashboardWorkStatusItems(
@@ -173,24 +310,39 @@ export function getDashboardWorkStatusItems(
   role: UserRole,
   userId: string,
   category: WorkStatusCategory,
+  periodScope?: DashboardPeriodScopeInput,
   today = DEMO_TODAY,
 ): DashboardWorkStatusItem[] {
-  const orders = getRoleVisibleWorkOrders(data, role, userId);
+  const referenceDate = resolveToday(periodScope, today);
+  const orders = getRoleVisibleWorkOrders(data, role, userId, periodScope);
 
   return orders
     .filter((order) => {
       if (category === "in_progress") return isInProgressExecution(order);
-      if (category === "due_today") return isDueTodayWorkOrder(order, today);
-      if (category === "overdue") return isOverdueWorkOrder(order, today);
+      if (category === "due_today")
+        return isDueTodayWorkOrder(order, referenceDate);
+      if (category === "overdue") return isOverdueWorkOrder(order, referenceDate);
+      if (category === "cancelled") return isCancelledWorkOrder(order);
+      if (category === "on_hold") return isOnHoldWorkOrder(order);
+      if (category === "postponed") return isPostponedWorkOrder(order);
       return isCompletedWorkOrder(order.stage);
     })
-    .map((order) => enrichWorkStatusItem(data, order, category, today))
+    .map((order) => enrichWorkStatusItem(data, order, category, referenceDate))
     .sort((a, b) => {
       if (category === "completed") {
         return b.completedDate.localeCompare(a.completedDate);
       }
       if (category === "overdue") {
         return a.daysFromDue - b.daysFromDue;
+      }
+      if (
+        category === "cancelled" ||
+        category === "on_hold" ||
+        category === "postponed"
+      ) {
+        const dueCmp = a.dueDate.localeCompare(b.dueDate);
+        if (dueCmp !== 0) return dueCmp;
+        return a.title.localeCompare(b.title, "ko");
       }
       const dueCmp = a.dueDate.localeCompare(b.dueDate);
       if (dueCmp !== 0) return dueCmp;
@@ -207,7 +359,14 @@ function daysFromDue(dueDate: string, today: string): number {
 export function totalActiveWorkStatusCount(
   summary: DashboardWorkStatusSummary,
 ): number {
-  return summary.in_progress + summary.due_today + summary.overdue;
+  return (
+    summary.in_progress +
+    summary.due_today +
+    summary.overdue +
+    summary.cancelled +
+    summary.on_hold +
+    summary.postponed
+  );
 }
 
 export function totalWorkStatusCount(summary: DashboardWorkStatusSummary): number {
@@ -220,6 +379,65 @@ export function totalWorkStatusCountWithCompleted(
   return totalActiveWorkStatusCount(summary) + summary.completed;
 }
 
+/** 행·열 내 건수 비중(0–100) */
+export function calcWorkStatusSharePercent(
+  count: number,
+  total: number,
+): number {
+  if (total <= 0 || count <= 0) return 0;
+  return Math.round((count / total) * 100);
+}
+
+/** 처리 완료 비율 — 완료 / (진행+오늘+초과+완료) */
+export function calcWorkStatusCompletionPercent(
+  summary: DashboardWorkStatusSummary,
+): number {
+  const total = totalWorkStatusCountWithCompleted(summary);
+  return calcWorkStatusSharePercent(summary.completed, total);
+}
+
+export function calcAssigneeExecutionProgressPercent(
+  data: AppData,
+  assigneeId: string,
+): number {
+  const contracts = data.contracts.filter(
+    (contract) =>
+      contract.assignedStaffId === assigneeId && contract.status === "active",
+  );
+  if (contracts.length === 0) return 0;
+  const avg =
+    contracts.reduce(
+      (sum, contract) => sum + getMonthlyProgressRate(data, contract),
+      0,
+    ) / contracts.length;
+  return Math.round(avg);
+}
+
+export function calcOrdersExecutionProgressPercent(
+  data: AppData,
+  orders: WorkOrder[],
+): number {
+  const contractIds = new Set(orders.map((order) => order.contractId));
+  const contracts = data.contracts.filter(
+    (contract) => contractIds.has(contract.id) && contract.status === "active",
+  );
+  if (contracts.length === 0) return 0;
+  const avg =
+    contracts.reduce(
+      (sum, contract) => sum + getMonthlyProgressRate(data, contract),
+      0,
+    ) / contracts.length;
+  return Math.round(avg);
+}
+
+export const WORK_STATUS_CATEGORY_BAR_COLORS: Record<WorkStatusCategory, string> =
+  Object.fromEntries(
+    Object.entries(WORK_STATUS_CATEGORY_META).map(([key, meta]) => [
+      key,
+      meta.barClassName,
+    ]),
+  ) as Record<WorkStatusCategory, string>;
+
 export function calcSummaryFromOrders(
   orders: WorkOrder[],
   today = DEMO_TODAY,
@@ -228,6 +446,9 @@ export function calcSummaryFromOrders(
     in_progress: orders.filter(isInProgressExecution).length,
     due_today: orders.filter((order) => isDueTodayWorkOrder(order, today)).length,
     overdue: orders.filter((order) => isOverdueWorkOrder(order, today)).length,
+    cancelled: orders.filter(isCancelledWorkOrder).length,
+    on_hold: orders.filter(isOnHoldWorkOrder).length,
+    postponed: orders.filter(isPostponedWorkOrder).length,
     completed: orders.filter((order) => isCompletedWorkOrder(order.stage)).length,
   };
 }
@@ -305,11 +526,11 @@ export function getWorkStatusPanelTitle(mode: WorkStatusPanelMode): string {
 export function getWorkStatusPanelSubtitle(mode: WorkStatusPanelMode): string {
   switch (mode) {
     case "team_leader":
-      return "처리 내역 · 담당별 진행중 · 오늘 마감 · 마감초과 · 완료 · 숫자 클릭 시 트리";
+      return "처리 내역 · 진행중 · 오늘 마감 · 마감초과 · 취소 · 보류 · 연기 · 완료 · 비중% · 실행 진행% · 숫자 클릭 시 트리";
     case "executive":
-      return "처리 내역 · 팀장 → 담당 트리 · 숫자 클릭 시 상세";
+      return "처리 내역 · 팀장 → 담당 트리 · 취소·보류·연기 포함 · 비중% · 실행 진행% · 숫자 클릭 시 상세";
     default:
-      return "처리 내역 · 진행중 · 오늘 마감 · 마감초과 · 완료 · 숫자 클릭 시 내역";
+      return "처리 내역 · 진행중 · 오늘 마감 · 마감초과 · 취소 · 보류 · 연기 · 완료 · 비중% · 실행 진행% · 숫자 클릭 시 내역";
   }
 }
 
@@ -360,6 +581,10 @@ export function getAssigneeWorkStatusBreakdown(
               ? "담당"
               : "담당",
         summary: calcSummaryFromOrders(list, today),
+        executionProgressPercent: calcAssigneeExecutionProgressPercent(
+          data,
+          assigneeId,
+        ),
       };
     })
     .sort((a, b) => {
@@ -374,9 +599,11 @@ export function getTeamLeaderWorkStatusBreakdown(
   data: AppData,
   role: UserRole,
   userId: string,
+  periodScope?: DashboardPeriodScopeInput,
   today = DEMO_TODAY,
 ): WorkStatusTeamLeaderBreakdown[] {
-  const orders = getRoleVisibleWorkOrders(data, role, userId);
+  const referenceDate = resolveToday(periodScope, today);
+  const orders = getRoleVisibleWorkOrders(data, role, userId, periodScope);
   const teams = getVisibleTeamsForRole(data, role, userId);
 
   return teams
@@ -399,8 +626,16 @@ export function getTeamLeaderWorkStatusBreakdown(
         leaderName: getUserName(data, leaderId),
         teamId: team.id,
         teamName: team.name,
-        summary: calcSummaryFromOrders(teamOrders, today),
-        assignees: getAssigneeWorkStatusBreakdown(data, teamOrders, today),
+        summary: calcSummaryFromOrders(teamOrders, referenceDate),
+        executionProgressPercent: calcOrdersExecutionProgressPercent(
+          data,
+          teamOrders,
+        ),
+        assignees: getAssigneeWorkStatusBreakdown(
+          data,
+          teamOrders,
+          referenceDate,
+        ),
       };
     })
     .filter((row) => totalWorkStatusCountWithCompleted(row.summary) > 0)
@@ -417,9 +652,17 @@ export function buildWorkStatusTree(
   role: UserRole,
   userId: string,
   category: WorkStatusCategory,
+  periodScope?: DashboardPeriodScopeInput,
   today = DEMO_TODAY,
 ): WorkStatusTreeNode[] {
-  const items = getDashboardWorkStatusItems(data, role, userId, category, today);
+  const items = getDashboardWorkStatusItems(
+    data,
+    role,
+    userId,
+    category,
+    periodScope,
+    today,
+  );
   const mode = getWorkStatusPanelMode(role);
 
   if (mode === "staff" || items.length === 0) {
@@ -454,7 +697,13 @@ export function buildWorkStatusTree(
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "ko"));
   }
 
-  const breakdown = getTeamLeaderWorkStatusBreakdown(data, role, userId, today);
+  const breakdown = getTeamLeaderWorkStatusBreakdown(
+    data,
+    role,
+    userId,
+    periodScope,
+    today,
+  );
   const nodes: WorkStatusTreeGroupNode[] = [];
 
   for (const team of breakdown) {
@@ -485,7 +734,7 @@ export function buildWorkStatusTree(
 
     nodes.push({
       type: "group",
-      id: team.leaderId,
+      id: team.teamId,
       label: team.leaderName,
       sublabel: team.teamName,
       count: teamItems.length,

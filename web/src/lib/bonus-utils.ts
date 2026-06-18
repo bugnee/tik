@@ -3,6 +3,7 @@ import type {
   BonusPayment,
   BonusPolicySettings,
   Contract,
+  UserRole,
 } from "./types";
 import { isLeaderManagedContract } from "./contract-access-utils";
 import {
@@ -217,7 +218,7 @@ export function validateTeamLeaderLimit(
   if (!team?.executiveId) return "팀 정보를 찾을 수 없습니다.";
   const execLimit = getExecutiveLimit(policy, team.executiveId);
   if (percent > execLimit) {
-    return `임원 한도 ${execLimit}%를 초과할 수 없습니다.`;
+    return `상위 배분 한도 ${execLimit}%를 초과할 수 없습니다.`;
   }
   return null;
 }
@@ -313,6 +314,88 @@ export function calcBonusAmounts(
     totalAmount:
       staffBonusAmount + teamLeaderBonusAmount + executiveBonusAmount,
   };
+}
+
+export type BonusAmounts = ReturnType<typeof calcBonusAmounts>;
+
+export type BonusTier = "staff" | "team_leader" | "executive";
+
+/** 결재 단계보다 상위 성과급 구간은 해당 결재권자에게 노출하지 않음 */
+export function canSeeBonusTier(
+  viewerRole: UserRole,
+  tier: BonusTier,
+): boolean {
+  switch (viewerRole) {
+    case "ceo":
+    case "finance_manager":
+      return true;
+    case "executive":
+      return tier === "staff" || tier === "team_leader" || tier === "executive";
+    case "team_leader":
+      return tier === "staff" || tier === "team_leader";
+    case "staff":
+      return tier === "staff";
+    default:
+      return false;
+  }
+}
+
+export function calcVisibleBonusTotal(
+  amounts: BonusAmounts,
+  viewerRole: UserRole,
+): number {
+  let total = 0;
+  if (canSeeBonusTier(viewerRole, "staff")) {
+    total += amounts.staffBonusAmount;
+  }
+  if (canSeeBonusTier(viewerRole, "team_leader")) {
+    total += amounts.teamLeaderBonusAmount;
+  }
+  if (canSeeBonusTier(viewerRole, "executive")) {
+    total += amounts.executiveBonusAmount;
+  }
+  return total;
+}
+
+export function getVisibleBonusTierCells(
+  amounts: BonusAmounts,
+  viewerRole: UserRole,
+): { tier: BonusTier; label: string; value: number }[] {
+  const cells: { tier: BonusTier; label: string; value: number }[] = [];
+  if (canSeeBonusTier(viewerRole, "staff")) {
+    cells.push({
+      tier: "staff",
+      label: `담당 ${amounts.staffPercentApplied}%`,
+      value: amounts.staffBonusAmount,
+    });
+  }
+  if (canSeeBonusTier(viewerRole, "team_leader")) {
+    cells.push({
+      tier: "team_leader",
+      label: `팀장 ${amounts.teamLeaderPercentApplied}%`,
+      value: amounts.teamLeaderBonusAmount,
+    });
+  }
+  if (canSeeBonusTier(viewerRole, "executive")) {
+    cells.push({
+      tier: "executive",
+      label: `임직원 ${amounts.executivePercentApplied}%`,
+      value: amounts.executiveBonusAmount,
+    });
+  }
+  return cells;
+}
+
+export function formatVisibleBonusBreakdown(
+  amounts: BonusAmounts,
+  viewerRole: UserRole,
+): string {
+  return getVisibleBonusTierCells(amounts, viewerRole)
+    .map((cell) => {
+      const pct = cell.label.match(/(\d+(?:\.\d+)?)%/)?.[1] ?? "0";
+      return `${cell.label.split(" ")[0]} ${formatBonusKRW(cell.value)} (${pct}%)`;
+    })
+    .join(" · ");
 }
 
 export function createBonusPaymentFromContract(

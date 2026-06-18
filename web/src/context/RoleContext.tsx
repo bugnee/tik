@@ -20,7 +20,8 @@ import { useAuth } from "@/context/AuthContext";
 
 import { useData } from "@/context/DataContext";
 
-import { DEMO_USER_BY_ROLE } from "@/lib/seed-data";
+import { resolveAuthenticatedUser, buildUserFromAccountProfile } from "@/lib/auth-utils";
+import { resolveDemoRoleUser } from "@/lib/seed-data";
 import {
   canSubmitWorkEvaluation,
   canViewWorkEvaluations as roleCanViewWorkEvaluations,
@@ -76,30 +77,22 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
 
   const currentUser = useMemo(() => {
+    if (isAuthenticated && accountProfile) {
+      const resolved = resolveAuthenticatedUser(accountProfile, users);
+      if (resolved) return resolved;
 
-    if (isAuthenticated && accountProfile?.linkedUserId) {
+      const fromProfile = buildUserFromAccountProfile(accountProfile);
+      if (fromProfile) return fromProfile;
 
-      const linked = users.find((u) => u.id === accountProfile.linkedUserId);
-
-      if (linked) return linked;
-
+      return resolveDemoRoleUser(accountProfile.role ?? "staff", users);
     }
 
+    return resolveDemoRoleUser(demoRole, users);
+  }, [isAuthenticated, accountProfile, users, demoRole]);
 
-
-    const demoId = DEMO_USER_BY_ROLE[demoRole];
-
-    const matched = users.find((u) => u.id === demoId);
-
-    if (matched) return matched;
-
-    return users.find((u) => u.role === demoRole) ?? users[0];
-
-  }, [isAuthenticated, accountProfile?.linkedUserId, users, demoRole]);
-
-
-
-  const activeRole = isAuthenticated ? currentUser.role : demoRole;
+  const activeRole: UserRole = isAuthenticated
+    ? (accountProfile?.role ?? currentUser.role)
+    : demoRole;
 
 
 

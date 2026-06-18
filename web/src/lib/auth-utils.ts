@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase";
+import { getSeedAuthDirectory } from "@/lib/seed-data";
+import type { AccountProfile, User, UserRole } from "@/lib/types";
 
 
 
@@ -83,61 +85,217 @@ export function writeMockAuthSession(user: AuthSessionUser | null) {
 
 
 export async function signInWithGoogleRedirect(client: SupabaseClient) {
-
-  const redirectTo = `${window.location.origin}/auth/callback`;
-
+  const redirectTo = getOAuthRedirectUrl();
   const { error } = await client.auth.signInWithOAuth({
-
     provider: "google",
-
     options: {
-
       redirectTo,
-
-      queryParams: { access_type: "offline", prompt: "consent" },
-
+      queryParams: { access_type: "offline", prompt: "select_account" },
     },
-
   });
-
   if (error) throw error;
+}
 
+/** OAuth 콜백 URL — 로컬·배포 공통 */
+export function getOAuthRedirectUrl(): string {
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/auth/callback`;
+  }
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
+  return `${siteUrl}/auth/callback`;
+}
+
+/** Google OAuth 사용자 → ERP 세션 사용자 */
+export function mapSupabaseUser(user: {
+  id: string;
+  email?: string;
+  user_metadata?: Record<string, unknown>;
+  app_metadata?: Record<string, unknown>;
+  identities?: Array<{
+    provider?: string;
+    identity_data?: Record<string, unknown>;
+  }>;
+}): AuthSessionUser {
+  const meta = user.user_metadata ?? {};
+  const googleIdentity = user.identities?.find((i) => i.provider === "google");
+  const identityData = googleIdentity?.identity_data ?? {};
+  const googleSub =
+    (identityData.sub as string | undefined) ||
+    (meta.sub as string | undefined) ||
+    user.id;
+
+  return {
+    googleId: googleSub,
+    email: user.email ?? (identityData.email as string) ?? "",
+    name:
+      (meta.full_name as string) ||
+      (meta.name as string) ||
+      (identityData.full_name as string) ||
+      (identityData.name as string) ||
+      user.email?.split("@")[0] ||
+      "사용자",
+    avatarUrl:
+      (meta.avatar_url as string) ||
+      (meta.picture as string) ||
+      (identityData.avatar_url as string) ||
+      (identityData.picture as string),
+  };
 }
 
 
 
-export function mapSupabaseUser(user: {
+/** 로그인 세션과 ERP 사용자 매칭 — 저장 데이터가 깨져도 시드에서 복구 */
+export function findAuthMatchedUser(
+  auth: Pick<AuthSessionUser, "googleId" | "email">,
+  users: User[],
+): User | undefined {
+  if (auth.googleId) {
+    const byGoogle = users.find((user) => user.googleId === auth.googleId);
+    if (byGoogle) return byGoogle;
+  }
+  if (auth.email) {
+    const byEmail = users.find((user) => user.email === auth.email);
+    if (byEmail) return byEmail;
+  }
 
-  id: string;
+  const seed = getSeedAuthDirectory();
+  if (auth.googleId) {
+    const seedByGoogle = seed.users.find(
+      (user) => user.googleId === auth.googleId,
+    );
+    if (seedByGoogle) return seedByGoogle;
+  }
+  if (auth.email) {
+    const seedByEmail = seed.users.find((user) => user.email === auth.email);
+    if (seedByEmail) return seedByEmail;
+  }
 
-  email?: string;
+  const seedProfile = seed.accountProfiles.find(
+    (profile) =>
+      profile.googleId === auth.googleId ||
+      (auth.email && profile.email === auth.email),
+  );
+  if (seedProfile?.linkedUserId) {
+    return (
+      users.find((user) => user.id === seedProfile.linkedUserId) ??
+      seed.users.find((user) => user.id === seedProfile.linkedUserId)
+    );
+  }
 
-  user_metadata?: Record<string, unknown>;
+  return undefined;
+}
 
-}): AuthSessionUser {
+function findUserByProfileKeys(
+  accountProfile: AccountProfile,
+  users: User[],
+): User | undefined {
+  if (accountProfile.googleId) {
+    const byGoogle = users.find(
+      (user) => user.googleId === accountProfile.googleId,
+    );
+    if (byGoogle) return byGoogle;
+  }
+  if (accountProfile.email) {
+    const byEmail = users.find((user) => user.email === accountProfile.email);
+    if (byEmail) return byEmail;
+  }
+  if (accountProfile.contractId) {
+    const byContract = users.find(
+      (user) =>
+        user.role === "client" &&
+        user.contractId === accountProfile.contractId,
+    );
+    if (byContract) return byContract;
+  }
+  if (accountProfile.linkedUserId) {
+    const linked = users.find((user) => user.id === accountProfile.linkedUserId);
+    if (
+      linked &&
+      (!accountProfile.role || linked.role === accountProfile.role)
+    ) {
+      return linked;
+    }
+  }
+  return undefined;
+}
 
-  const meta = user.user_metadata ?? {};
+/** 승인된 계정 프로필 → ERP 사용자 연결 */
+export function resolveAuthenticatedUser(
+  accountProfile: AccountProfile,
+  users: User[],
+): User | null {
+  const matched = findUserByProfileKeys(accountProfile, users);
+  if (matched) return matched;
+
+  const seed = getSeedAuthDirectory();
+  const seedMatched = findUserByProfileKeys(accountProfile, seed.users);
+  if (seedMatched) return seedMatched;
+
+  const seedProfile = seed.accountProfiles.find(
+    (profile) =>
+      profile.googleId === accountProfile.googleId ||
+      (accountProfile.email && profile.email === accountProfile.email) ||
+      (accountProfile.linkedUserId &&
+        profile.linkedUserId === accountProfile.linkedUserId),
+  );
+  if (seedProfile) {
+    const fromSeedProfile = findUserByProfileKeys(seedProfile, seed.users);
+    if (fromSeedProfile) return fromSeedProfile;
+  }
+
+  return buildUserFromAccountProfile(accountProfile);
+}
+
+/** users 배열에 없을 때 프로필·시드로 최소 사용자 구성 */
+export function buildUserFromAccountProfile(
+  accountProfile: AccountProfile,
+): User | null {
+  const role = accountProfile.role;
+  if (!role) return null;
+
+  const seed = getSeedAuthDirectory();
+  if (accountProfile.linkedUserId) {
+    const seedUser = seed.users.find(
+      (user) => user.id === accountProfile.linkedUserId,
+    );
+    if (seedUser) return seedUser;
+  }
+
+  if (role === "client" && accountProfile.contractId) {
+    return {
+      id:
+        accountProfile.linkedUserId ??
+        `u-client-${accountProfile.contractId.replace("c-", "")}`,
+      name: accountProfile.name,
+      role: "client",
+      contractId: accountProfile.contractId,
+      email: accountProfile.email,
+      googleId: accountProfile.googleId,
+      isFinancialViewer: false,
+    };
+  }
+
+  const demoMatch = findAuthMatchedUser(
+    {
+      googleId: accountProfile.googleId ?? "",
+      email: accountProfile.email ?? "",
+    },
+    seed.users,
+  );
+  if (demoMatch) return demoMatch;
 
   return {
-
-    googleId: user.id,
-
-    email: user.email ?? "",
-
-    name:
-
-      (meta.full_name as string) ||
-
-      (meta.name as string) ||
-
-      user.email?.split("@")[0] ||
-
-      "사용자",
-
-    avatarUrl: (meta.avatar_url as string) || (meta.picture as string),
-
+    id: accountProfile.linkedUserId ?? accountProfile.id,
+    name: accountProfile.name,
+    role,
+    isFinancialViewer: accountProfile.isFinancialViewer ?? false,
+    teamId: accountProfile.teamId,
+    partnerId: accountProfile.partnerId,
+    contractId: accountProfile.contractId,
+    email: accountProfile.email,
+    googleId: accountProfile.googleId,
   };
-
 }
 
 
@@ -258,17 +416,59 @@ export const DEMO_GOOGLE_ACCOUNTS: DemoGoogleAccount[] = [
 
   },
 
-  {
+    {
 
     googleId: "demo-google-client",
 
-    email: "client@seoulfood.kr",
+    email: "client@jejuoseong.kr",
 
-    name: "서울맛집연구소",
+    name: "제주 오성",
 
     roleLabel: "고객사",
 
-    description: "계약 · 진행 · 링크 통합 보고서",
+    description: "제주 오성 · 실운영 샘플 (최적블 30건·키워드 순위)",
+
+  },
+
+  {
+
+    googleId: "demo-google-client-2",
+
+    email: "client@haeundae.kr",
+
+    name: "부산해운대펜션",
+
+    roleLabel: "고객사",
+
+    description: "고객사 포털 · 성과·소통",
+
+  },
+
+  {
+
+    googleId: "demo-google-client-3",
+
+    email: "client@jejuorum.kr",
+
+    name: "제주오름카페",
+
+    roleLabel: "고객사",
+
+    description: "고객사 포털 · 일정·체험단",
+
+  },
+
+  {
+
+    googleId: "demo-google-client-4",
+
+    email: "client@beautyclinic.kr",
+
+    name: "강남뷰티클리닉",
+
+    roleLabel: "고객사",
+
+    description: "고객사 포털 · 플레이스·Q&A",
 
   },
 

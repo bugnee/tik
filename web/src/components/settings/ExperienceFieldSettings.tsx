@@ -3,9 +3,11 @@
 import { useMemo, useState } from "react";
 import { Pencil, Plus, Trash2, Users } from "lucide-react";
 import { useData } from "@/context/DataContext";
+import { useExperience } from "@/features/experience/useExperience";
 import { useRole } from "@/context/RoleContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Card, CardHeader } from "@/components/ui/Card";
 import {
   DataTable,
@@ -26,18 +28,18 @@ import type {
   ExperienceFieldDefinition,
   ExperienceFieldDefinitionInput,
 } from "@/lib/types";
+import { useFormDirty } from "@/hooks/useFormDirty";
 
 export function ExperienceFieldSettings() {
   const data = useData();
   const { canManageContractTerms } = useRole();
   const {
-    users,
     experienceFieldDefinitions,
-    experienceCampaigns,
     addExperienceFieldDefinition,
     updateExperienceFieldDefinition,
     deleteExperienceFieldDefinition,
-  } = data;
+  } = useExperience();
+  const { users, experienceCampaigns } = data;
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ExperienceFieldDefinition | null>(null);
@@ -56,6 +58,11 @@ export function ExperienceFieldSettings() {
   const teamLeaders = useMemo(
     () => users.filter((u) => u.role === "team_leader"),
     [users],
+  );
+  const formDirty = useFormDirty(
+    modalOpen && !!form,
+    editing?.id ?? "create",
+    form ?? {},
   );
 
   if (!canManageContractTerms) {
@@ -273,7 +280,9 @@ export function ExperienceFieldSettings() {
               >
                 취소
               </Button>
-              <Button type="submit">{editing ? "저장" : "추가"}</Button>
+              <SaveButton type="submit" dirty={formDirty}>
+                {editing ? "저장" : "추가"}
+              </SaveButton>
             </div>
           </form>
         )}

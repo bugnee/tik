@@ -5,6 +5,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useData } from "@/context/DataContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Card } from "@/components/ui/Card";
 import {
   DataTable,
@@ -24,6 +25,7 @@ import { TaskChannelBadge } from "@/components/ui/TaskChannelBadge";
 import { getExecutionTypeLabel, getExecutionTypeLabels } from "@/lib/task-channel-utils";
 import type { Execution, ExecutionInput, ExecutionStatus, ExecutionType, PostLinkEntry } from "@/lib/types";
 import { EXECUTION_STATUS_LABELS } from "@/lib/types";
+import { useFormDirty } from "@/hooks/useFormDirty";
 
 const STATUS_VARIANT: Record<ExecutionStatus, "default" | "warning" | "success" | "danger"> = {
   pending: "default",
@@ -51,6 +53,11 @@ export function ExecutionsManager() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Execution | null>(null);
   const [form, setForm] = useState<ExecutionInput>(emptyForm());
+  const formDirty = useFormDirty(
+    modalOpen,
+    editing?.id ?? "create",
+    form,
+  );
 
   const enriched = useMemo(
     () => executions.map((e) => enrichExecution(data, e)),
@@ -292,13 +299,17 @@ export function ExecutionsManager() {
           />
           <PostLinksField
             links={form.postLinks ?? []}
+            defaultDueDate={form.dueDate}
+            contract={contracts.find((c) => c.id === form.contractId) ?? null}
             onChange={(postLinks) => setForm({ ...form, postLinks })}
           />
           <div className="flex justify-end gap-2 border-t border-zinc-800 pt-4">
             <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
               취소
             </Button>
-            <Button type="submit">{editing ? "저장" : "등록"}</Button>
+            <SaveButton type="submit" dirty={formDirty}>
+              {editing ? "저장" : "등록"}
+            </SaveButton>
           </div>
         </form>
       </Modal>

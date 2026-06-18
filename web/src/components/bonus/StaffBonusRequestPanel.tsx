@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { useData } from "@/context/DataContext";
+import { useBonus } from "@/features/bonus/useBonus";
 import { useRole } from "@/context/RoleContext";
 import {
   StaffBonusLimitInfo,
@@ -33,7 +34,7 @@ export function StaffBonusRequestPanel({
 }) {
   const data = useData();
   const { currentUser } = useRole();
-  const { bonusPayments, requestBonusPayment } = data;
+  const { bonusPayments, requestBonusPayment } = useBonus();
   const isLeaderMode = mode === "team_leader";
 
   const contracts = useMemo(() => {
@@ -101,7 +102,7 @@ export function StaffBonusRequestPanel({
                     scheduledPayDate={scheduledPayDate}
                     paidAt={existing?.paidAt}
                   />
-                  <p className="mt-1 text-xs text-zinc-600">
+                  <p className="mt-1 text-xs font-medium text-sky-400">
                     재계약 {c.renewalMonthCount}월차 · 예상{" "}
                     {formatBonusKRW(bonusAmount)} ({bonusRoleLabel}{" "}
                     {bonusPct}%)

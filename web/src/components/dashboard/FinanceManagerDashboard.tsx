@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Banknote,
   CheckCircle2,
@@ -12,12 +13,20 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { SortableTh } from "@/components/ui/DataTable";
 import { StatCard } from "@/components/ui/StatCard";
 import { DashboardHeader } from "@/components/dashboard/StaffDashboard";
 import { DashboardBonusSection } from "@/components/dashboard/DashboardBonusSection";
 import { useData } from "@/context/DataContext";
+import {
+  useDashboardPeriod,
+  useDashboardPeriodScope,
+} from "@/context/DashboardPeriodContext";
 import { useRole } from "@/context/RoleContext";
+import { matchesPeriodDate } from "@/lib/date-filter-utils";
 import { BonusPayScheduleNotice } from "@/components/bonus/BonusPayScheduleNotice";
+import { BonusPayrollSummaryPanel } from "@/components/bonus/BonusPayrollSummaryPanel";
+import { BonusAmountBreakdownInline } from "@/components/bonus/BonusAmountBreakdown";
 import {
   ClientDepositConfirmPanel,
   ClientDepositTaskLine,
@@ -37,18 +46,24 @@ import {
   BONUS_STAGE_LABELS,
   PAYOUT_LABELS,
 } from "@/lib/types";
+import { FINANCE_SECTION_CLIENT_DEPOSIT } from "@/lib/role-action-utils";
 
 export function FinanceManagerDashboard({ embedded }: { embedded?: boolean } = {}) {
   const data = useData();
   const { currentUser } = useRole();
+  const searchParams = useSearchParams();
+  const sectionTarget = searchParams.get("section");
+  const focusClientDeposit = sectionTarget === FINANCE_SECTION_CLIENT_DEPOSIT;
+  const { periodLabel } = useDashboardPeriod();
+  const periodScope = useDashboardPeriodScope();
   const {
-    expenses,
     fundBudget,
     bonusPayments,
     markExpensesPaid,
     payBonus,
     updateFundBudget,
   } = data;
+  const expenses = periodScope.expenses;
 
   const financeQueue = useMemo(
     () => getFinancePayoutQueue(expenses),
@@ -66,10 +81,15 @@ export function FinanceManagerDashboard({ embedded }: { embedded?: boolean } = {
 
   const pendingBonuses = useMemo(
     () =>
-      getPendingBonusForRole(bonusPayments, "finance_manager").map((p) =>
-        enrichBonusPayment(data, p),
-      ),
-    [bonusPayments, data],
+      getPendingBonusForRole(bonusPayments, "finance_manager")
+        .filter((payment) =>
+          matchesPeriodDate(
+            payment.scheduledPayDate ?? payment.clientDepositDate,
+            periodScope.periodFilter,
+          ),
+        )
+        .map((p) => enrichBonusPayment(data, p)),
+    [bonusPayments, data, periodScope.periodFilter],
   );
 
   const unpaidTotal = financeQueue.reduce((s, e) => s + e.amount, 0);
@@ -79,12 +99,22 @@ export function FinanceManagerDashboard({ embedded }: { embedded?: boolean } = {
   );
   const usedBudget = fundBudget.expenseAllocated + fundBudget.bonusAllocated;
 
+  useEffect(() => {
+    if (!focusClientDeposit) return;
+    const timer = window.setTimeout(() => {
+      document
+        .getElementById(FINANCE_SECTION_CLIENT_DEPOSIT)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [focusClientDeposit]);
+
   return (
     <div className="space-y-6">
       {!embedded && (
         <DashboardHeader
           title="재무담당 대시보드"
-          description="원가·성과급(세전) 자금 운영 · 15일 마감 · 25일 급여 합산"
+          description={`${periodLabel} · 원가·성과급(세전) 자금 운영 · 15일 마감 · 25일 급여 합산`}
         />
       )}
 
@@ -116,6 +146,13 @@ export function FinanceManagerDashboard({ embedded }: { embedded?: boolean } = {
         onUpdate={updateFundBudget}
         hideBonus
       />
+
+      <section
+        id={FINANCE_SECTION_CLIENT_DEPOSIT}
+        className="scroll-mt-24"
+      >
+        <ClientDepositConfirmPanel autoOpenPending={focusClientDeposit} />
+      </section>
 
       <ExpensePayoutQueue
         expenses={enrichedExpenses}
@@ -153,9 +190,9 @@ export function FinanceManagerDashboard({ embedded }: { embedded?: boolean } = {
           bonusOnly
         />
 
-        <ClientDepositConfirmPanel />
-
         <BonusPayScheduleNotice />
+
+        <BonusPayrollSummaryPanel />
 
         <BonusPayoutQueue
           bonuses={pendingBonuses}
@@ -347,6 +384,13 @@ function FundBar({
 
 type EnrichedExpense = ReturnType<typeof enrichExpense>;
 
+type PayoutQueueSortKey =
+  | "clientName"
+  | "categoryLabel"
+  | "payoutRequestedAt"
+  | "amount"
+  | "payoutStatus";
+
 function ExpensePayoutQueue({
   expenses,
   onMarkPaid,
@@ -357,6 +401,43 @@ function ExpensePayoutQueue({
   onDeductBudget: (amount: number) => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<PayoutQueueSortKey>("payoutRequestedAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const sorted = useMemo(() => {
+    return [...expenses].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "clientName":
+          cmp = a.clientName.localeCompare(b.clientName, "ko");
+          break;
+        case "categoryLabel":
+          cmp = a.categoryLabel.localeCompare(b.categoryLabel, "ko");
+          break;
+        case "payoutRequestedAt":
+          cmp = (a.payoutRequestedAt ?? "").localeCompare(
+            b.payoutRequestedAt ?? "",
+          );
+          break;
+        case "amount":
+          cmp = a.amount - b.amount;
+          break;
+        case "payoutStatus":
+          cmp = a.payoutStatus.localeCompare(b.payoutStatus);
+          break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [expenses, sortKey, sortDir]);
+
+  function toggleSort(key: PayoutQueueSortKey) {
+    if (sortKey === key) {
+      setSortDir((dir) => (dir === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -365,6 +446,14 @@ function ExpensePayoutQueue({
       else next.add(id);
       return next;
     });
+  }
+
+  function toggleAll() {
+    if (sorted.length > 0 && selected.size === sorted.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(sorted.map((e) => e.id)));
+    }
   }
 
   function processPayout() {
@@ -377,11 +466,11 @@ function ExpensePayoutQueue({
 
   function downloadCSV() {
     const items = expenses.filter((e) => selected.has(e.id));
-    const header = "수취인,계좌번호,금액,적요\n";
+    const header = "수취인,계좌번호,금액,입금요청일,적요\n";
     const rows = items
       .map(
         (e) =>
-          `${e.accountHolder},${e.bankAccount},${e.amount},${e.clientName}_${e.description}`,
+          `${e.accountHolder},${e.bankAccount},${e.amount},${e.payoutRequestedAt ?? ""},${e.clientName}_${e.description}`,
       )
       .join("\n");
     const blob = new Blob(["\uFEFF" + header + rows], {
@@ -394,6 +483,8 @@ function ExpensePayoutQueue({
     a.click();
     URL.revokeObjectURL(url);
   }
+
+  const allSelected = sorted.length > 0 && selected.size === sorted.length;
 
   return (
     <Card glow>
@@ -426,15 +517,59 @@ function ExpensePayoutQueue({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-              <th className="pb-3 pr-3" />
-              <th className="pb-3 pr-4 font-medium">업체</th>
-              <th className="pb-3 pr-4 font-medium">카테고리</th>
-              <th className="pb-3 pr-4 font-medium">금액</th>
-              <th className="pb-3 font-medium">상태</th>
+              <th className="pb-3 pr-3">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  aria-label="전체 선택"
+                  className="rounded border-zinc-600 bg-zinc-800 text-emerald-500"
+                />
+              </th>
+              <SortableTh
+                className="pb-3 pr-4"
+                active={sortKey === "clientName"}
+                direction={sortDir}
+                onClick={() => toggleSort("clientName")}
+              >
+                업체
+              </SortableTh>
+              <SortableTh
+                className="pb-3 pr-4"
+                active={sortKey === "categoryLabel"}
+                direction={sortDir}
+                onClick={() => toggleSort("categoryLabel")}
+              >
+                카테고리
+              </SortableTh>
+              <SortableTh
+                className="pb-3 pr-4"
+                active={sortKey === "payoutRequestedAt"}
+                direction={sortDir}
+                onClick={() => toggleSort("payoutRequestedAt")}
+              >
+                입금요청일
+              </SortableTh>
+              <SortableTh
+                className="pb-3 pr-4"
+                active={sortKey === "amount"}
+                direction={sortDir}
+                onClick={() => toggleSort("amount")}
+              >
+                금액
+              </SortableTh>
+              <SortableTh
+                className="pb-3"
+                active={sortKey === "payoutStatus"}
+                direction={sortDir}
+                onClick={() => toggleSort("payoutStatus")}
+              >
+                상태
+              </SortableTh>
             </tr>
           </thead>
           <tbody>
-            {expenses.map((e) => (
+            {sorted.map((e) => (
               <tr
                 key={e.id}
                 className="border-b border-zinc-800/40 text-zinc-400"
@@ -451,8 +586,9 @@ function ExpensePayoutQueue({
                   <p className="font-medium text-zinc-200">{e.clientName}</p>
                   <p className="text-xs text-zinc-600">{e.description}</p>
                 </td>
-                <td className="py-3 pr-4">
-                  {e.categoryLabel}
+                <td className="py-3 pr-4">{e.categoryLabel}</td>
+                <td className="py-3 pr-4 font-mono text-zinc-300">
+                  {e.payoutRequestedAt ?? "-"}
                 </td>
                 <td className="py-3 pr-4 font-mono text-zinc-200">
                   {formatKRW(e.amount)}
@@ -517,14 +653,11 @@ function BonusPayoutQueue({
                 closingDeadline={item.closingDeadline}
                 paidAt={item.paidAt}
               />
-              <p className="mt-1 text-xs text-zinc-600">
-                담당 {item.staffPercentApplied}%{" "}
-                {formatBonusKRW(item.staffBonusAmount)} · 팀장{" "}
-                {item.teamLeaderPercentApplied}%{" "}
-                {formatBonusKRW(item.teamLeaderBonusAmount)} · 임직원{" "}
-                {item.executivePercentApplied}%{" "}
-                {formatBonusKRW(item.executiveBonusAmount)}
-              </p>
+              <BonusAmountBreakdownInline
+                amounts={item}
+                viewerRole="finance_manager"
+                className="mt-2"
+              />
               <p className="mt-1 text-xs text-cyan-400/80">{item.payStatusMessage}</p>
             </div>
             <div className="flex items-center gap-3">

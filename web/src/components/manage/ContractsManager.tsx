@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Building2, ExternalLink, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import { useData } from "@/context/DataContext";
+import { useContracts } from "@/features/contracts/useContracts";
 import { useRole } from "@/context/RoleContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Card } from "@/components/ui/Card";
 import {
   DataTable,
@@ -20,9 +22,17 @@ import {
 } from "@/components/ui/DataTable";
 import { StatCard } from "@/components/ui/StatCard";
 import { Checkbox, Input, Select } from "@/components/ui/FormFields";
+import { GlossaryHint } from "@/components/ui/GlossaryHint";
 import { Modal } from "@/components/ui/Modal";
 import { LeaderManagedContractNotice } from "@/components/contracts/LeaderManagedContractNotice";
 import { ExtensionContractCheckboxField } from "@/components/contracts/ExtensionContractCheckboxField";
+import { ClientLinksFields } from "@/components/contracts/ClientLinksPanel";
+import { ClientBusinessInfoFields } from "@/components/contracts/ClientBusinessInfoFields";
+import { RegionSelect } from "@/components/location/RegionSelect";
+import {
+  locationMatchesSearch,
+  LOCATION_FIELD_HINT,
+} from "@/lib/location-profile-utils";
 import { cn } from "@/lib/cn";
 import {
   countPipeline,
@@ -38,6 +48,8 @@ import {
   getContractTargetCount,
   setContractTargetCount,
 } from "@/lib/task-channel-utils";
+import type { TaskChannelDefinition } from "@/lib/types";
+import { getGlossaryForTaskChannel } from "@/lib/marketing-glossary";
 import {
   isLeaderManagedAssignee,
   isLeaderManagedContract,
@@ -48,14 +60,78 @@ import {
   getTeamName,
   getUserName,
 } from "@/lib/selectors";
-import type { Contract, ContractInput } from "@/lib/types";
+import type { AppData, Contract, ContractInput } from "@/lib/types";
 import {
   CONTRACT_STATUS_LABELS,
   PIPELINE_CATEGORY_LABELS,
 } from "@/lib/types";
+import { useFormDirty } from "@/hooks/useFormDirty";
 
-type ContractSortKey = "clientName" | "assignee";
+type ContractSortKey =
+  | "clientName"
+  | "team"
+  | "assignee"
+  | "status"
+  | "monthlyFee"
+  | "place"
+  | "conditions"
+  | `channel:${string}`;
 type SortDirection = "asc" | "desc";
+
+const PIPELINE_SORT_ORDER = {
+  in_progress: 0,
+  extension_imminent: 1,
+  contract_ending: 2,
+} as const;
+
+function compareContracts(
+  a: Contract,
+  b: Contract,
+  sortKey: ContractSortKey,
+  data: AppData,
+  targetChannels: TaskChannelDefinition[],
+): number {
+  switch (sortKey) {
+    case "clientName":
+      return a.clientName.localeCompare(b.clientName, "ko");
+    case "team":
+      return getTeamName(data, a.teamId).localeCompare(
+        getTeamName(data, b.teamId),
+        "ko",
+      );
+    case "assignee":
+      return getUserName(data, a.assignedStaffId).localeCompare(
+        getUserName(data, b.assignedStaffId),
+        "ko",
+      );
+    case "status": {
+      const aPipeline = PIPELINE_SORT_ORDER[getPipelineCategory(a)];
+      const bPipeline = PIPELINE_SORT_ORDER[getPipelineCategory(b)];
+      if (aPipeline !== bPipeline) return aPipeline - bPipeline;
+      return getContractStatusDisplay(a).sortKey.localeCompare(
+        getContractStatusDisplay(b).sortKey,
+      );
+    }
+    case "monthlyFee":
+      return a.monthlyFee - b.monthlyFee;
+    case "place":
+      return Number(a.hasPlaceSetting) - Number(b.hasPlaceSetting);
+    case "conditions":
+      return (
+        Number(a.isExtension) - Number(b.isExtension) ||
+        Number(a.hasReferralPromo) - Number(b.hasReferralPromo)
+      );
+    default: {
+      if (!sortKey.startsWith("channel:")) return 0;
+      const channelId = sortKey.slice("channel:".length);
+      const channel = targetChannels.find((item) => item.id === channelId);
+      if (!channel) return 0;
+      return (
+        getContractTargetCount(a, channel) - getContractTargetCount(b, channel)
+      );
+    }
+  }
+}
 
 const emptyForm = (): ContractInput => ({
   clientName: "",
@@ -81,11 +157,12 @@ const emptyForm = (): ContractInput => ({
 
 export function ContractsManager() {
   const data = useData();
+  const { addContract, updateContract, deleteContract } = useContracts();
   const { canManageContractTerms, currentUser, activeRole } = useRole();
-  const { contracts, teams, partners, taskChannels, addContract, updateContract, deleteContract } = data;
+  const { contracts, teams, partners, taskChannels } = data;
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<ContractSortKey | null>(null);
-  const [sortDir, setSortDir] = useState<SortDirection>("asc");
+  const [sortKey, setSortKey] = useState<ContractSortKey | null>("monthlyFee");
+  const [sortDir, setSortDir] = useState<SortDirection>("desc");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Contract | null>(null);
   const [form, setForm] = useState<ContractInput>(emptyForm());
@@ -109,13 +186,20 @@ export function ContractsManager() {
     () => getContractTargetChannels(taskChannels),
     [taskChannels],
   );
+  const formDirty = useFormDirty(
+    modalOpen,
+    editing?.id ?? "create",
+    form,
+  );
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return roleContracts.filter(
       (c) =>
         c.clientName.toLowerCase().includes(q) ||
-        getUserName(data, c.assignedStaffId).toLowerCase().includes(q),
+        (c.companyName?.toLowerCase().includes(q) ?? false) ||
+        getUserName(data, c.assignedStaffId).toLowerCase().includes(q) ||
+        locationMatchesSearch(c, q),
     );
   }, [roleContracts, search, data]);
 
@@ -132,18 +216,10 @@ export function ContractsManager() {
     if (!sortKey) return filtered;
 
     return [...filtered].sort((a, b) => {
-      const aValue =
-        sortKey === "clientName"
-          ? a.clientName
-          : getUserName(data, a.assignedStaffId);
-      const bValue =
-        sortKey === "clientName"
-          ? b.clientName
-          : getUserName(data, b.assignedStaffId);
-      const cmp = aValue.localeCompare(bValue, "ko");
+      const cmp = compareContracts(a, b, sortKey, data, targetChannels);
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [filtered, sortKey, sortDir, data]);
+  }, [filtered, sortKey, sortDir, data, targetChannels]);
 
   const summary = useMemo(() => {
     const active = filtered.filter((c) => c.status === "active");
@@ -257,7 +333,7 @@ export function ContractsManager() {
         <SearchBar
           value={search}
           onChange={setSearch}
-          placeholder="업체명 · 담당자 검색"
+          placeholder="상호명 · 회사명 · 담당자 · 지역 검색"
         />
       </Card>
 
@@ -269,9 +345,15 @@ export function ContractsManager() {
               direction={sortDir}
               onClick={() => toggleSort("clientName")}
             >
-              업체명
+              상호명
             </SortableTh>
-            <Th>팀</Th>
+            <SortableTh
+              active={sortKey === "team"}
+              direction={sortDir}
+              onClick={() => toggleSort("team")}
+            >
+              팀
+            </SortableTh>
             <SortableTh
               active={sortKey === "assignee"}
               direction={sortDir}
@@ -279,13 +361,46 @@ export function ContractsManager() {
             >
               담당
             </SortableTh>
-            <Th>계약현황</Th>
-            <Th>월 광고비</Th>
+            <SortableTh
+              active={sortKey === "status"}
+              direction={sortDir}
+              onClick={() => toggleSort("status")}
+            >
+              계약현황
+            </SortableTh>
+            <SortableTh
+              active={sortKey === "monthlyFee"}
+              direction={sortDir}
+              onClick={() => toggleSort("monthlyFee")}
+            >
+              월 광고비
+            </SortableTh>
             {targetChannels.map((channel) => (
-              <Th key={channel.id}>{channel.label}</Th>
+              <SortableTh
+                key={channel.id}
+                active={sortKey === `channel:${channel.id}`}
+                direction={sortDir}
+                onClick={() => toggleSort(`channel:${channel.id}`)}
+              >
+                <GlossaryHint entry={getGlossaryForTaskChannel(channel)}>
+                  {channel.label}
+                </GlossaryHint>
+              </SortableTh>
             ))}
-            <Th>플레이스</Th>
-            <Th>조건</Th>
+            <SortableTh
+              active={sortKey === "place"}
+              direction={sortDir}
+              onClick={() => toggleSort("place")}
+            >
+              <GlossaryHint text="플레이스">플레이스</GlossaryHint>
+            </SortableTh>
+            <SortableTh
+              active={sortKey === "conditions"}
+              direction={sortDir}
+              onClick={() => toggleSort("conditions")}
+            >
+              조건
+            </SortableTh>
             <Th className="w-24">관리</Th>
           </tr>
         </thead>
@@ -294,16 +409,15 @@ export function ContractsManager() {
             <Tr key={c.id}>
               <Td className="font-medium text-zinc-100">
                 <span className="inline-flex flex-wrap items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => toggleSort("clientName")}
+                  <Link
+                    href={`/contracts/${c.id}`}
                     className={cn(
                       "text-left transition-colors hover:text-emerald-400 hover:underline",
                       sortKey === "clientName" && "text-emerald-300",
                     )}
                   >
                     {c.clientName}
-                  </button>
+                  </Link>
                   <Link
                     href={`/contracts/${c.id}`}
                     className="inline-flex rounded p-0.5 text-zinc-500 hover:text-emerald-400"
@@ -320,16 +434,7 @@ export function ContractsManager() {
               </Td>
               <Td>{getTeamName(dataCtx, c.teamId)}</Td>
               <Td>
-                <button
-                  type="button"
-                  onClick={() => toggleSort("assignee")}
-                  className={cn(
-                    "text-left transition-colors hover:text-emerald-400 hover:underline",
-                    sortKey === "assignee" && "text-emerald-300",
-                  )}
-                >
-                  {getUserName(dataCtx, c.assignedStaffId)}
-                </button>
+                {getUserName(dataCtx, c.assignedStaffId)}
                 {isLeaderManagedContract(dataCtx, c) && (
                   <span className="ml-1 text-xs text-cyan-500/80">(팀장)</span>
                 )}
@@ -353,7 +458,7 @@ export function ContractsManager() {
               <Td>
                 <div className="flex flex-wrap gap-1">
                   {c.isExtension && <Badge variant="success">연장</Badge>}
-                  {c.hasReferralPromo && <Badge variant="info">소개10%</Badge>}
+                  {c.hasReferralPromo && <Badge variant="info">리셀러10%</Badge>}
                 </div>
               </Td>
               <Td>
@@ -413,10 +518,28 @@ export function ContractsManager() {
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
-            label="업체명 *"
+            label="상호명 *"
             value={form.clientName}
             onChange={(e) => setForm({ ...form, clientName: e.target.value })}
+            placeholder="매장·브랜드 표기명"
             required
+          />
+          <Input
+            label="회사명"
+            value={form.companyName ?? ""}
+            onChange={(e) => setForm({ ...form, companyName: e.target.value })}
+            placeholder="법인·사업자 등록상 회사명"
+          />
+          <ClientBusinessInfoFields
+            value={{
+              businessRegistrationNumber: form.businessRegistrationNumber,
+              clientPhone: form.clientPhone,
+              representativeName: form.representativeName,
+              clientEmail: form.clientEmail,
+              clientContactName: form.clientContactName,
+              clientContactPhone: form.clientContactPhone,
+            }}
+            onChange={(info) => setForm({ ...form, ...info })}
           />
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
@@ -501,6 +624,7 @@ export function ContractsManager() {
               <Input
                 key={channel.id}
                 label={`${channel.label} (건)`}
+                labelGlossary
                 type="number"
                 min={0}
                 value={getContractTargetCount(form as Contract, channel)}
@@ -518,8 +642,40 @@ export function ContractsManager() {
           </div>
           <Checkbox
             label="플레이스세팅 포함"
+            labelGlossary="플레이스"
             checked={form.hasPlaceSetting}
             onChange={(v) => setForm({ ...form, hasPlaceSetting: v })}
+          />
+          <div className="space-y-3 rounded-xl border border-violet-500/15 bg-violet-500/5 p-4">
+            <p className="text-xs font-medium text-violet-300/90">
+              고객사 위치 · 체험단 일정 지역
+            </p>
+            <p className="text-xs text-zinc-500">{LOCATION_FIELD_HINT}</p>
+            <RegionSelect
+              province={form.regionProvince ?? ""}
+              city={form.regionCity ?? ""}
+              onProvinceChange={(regionProvince) =>
+                setForm((prev) => ({ ...prev, regionProvince, regionCity: "" }))
+              }
+              onCityChange={(regionCity) =>
+                setForm((prev) => ({ ...prev, regionCity }))
+              }
+            />
+            <Input
+              label="상세 주소"
+              value={form.address ?? ""}
+              onChange={(e) => setForm({ ...form, address: e.target.value })}
+              placeholder="도로명 · 건물명"
+            />
+          </div>
+          <ClientLinksFields
+            value={{
+              placeLink: form.placeLink,
+              instagramLink: form.instagramLink,
+              youtubeLink: form.youtubeLink,
+              otherLink: form.otherLink,
+            }}
+            onChange={(links) => setForm({ ...form, ...links })}
           />
           {canManageContractTerms ? (
             <div className="flex flex-wrap gap-6 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
@@ -533,7 +689,7 @@ export function ContractsManager() {
                 onChange={(isExtension) => setForm({ ...form, isExtension })}
               />
               <Checkbox
-                label="소개 프로모션 (10%)"
+                label="리셀러 프로모션 (10%)"
                 checked={form.hasReferralPromo}
                 onChange={(v) =>
                   setForm({
@@ -569,11 +725,11 @@ export function ContractsManager() {
             (form.isExtension || form.hasReferralPromo) && (
               <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
                 <span className="w-full text-xs text-zinc-500">
-                  연장/소개 조건 (임원 · 대표만 수정 가능)
+                  연장/리셀러 프로모션 조건 (임원 · 대표만 수정 가능)
                 </span>
                 {form.isExtension && <Badge variant="success">연장</Badge>}
                 {form.hasReferralPromo && (
-                  <Badge variant="info">소개 10%</Badge>
+                  <Badge variant="info">리셀러 10%</Badge>
                 )}
               </div>
             )
@@ -582,7 +738,9 @@ export function ContractsManager() {
             <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
               취소
             </Button>
-            <Button type="submit">{editing ? "저장" : "추가"}</Button>
+            <SaveButton type="submit" dirty={formDirty}>
+              {editing ? "저장" : "추가"}
+            </SaveButton>
           </div>
         </form>
       </Modal>

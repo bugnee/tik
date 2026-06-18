@@ -2,12 +2,16 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   Building2,
+  CalendarDays,
   ClipboardCheck,
+  FileText,
   Handshake,
   LayoutDashboard,
   MapPin,
+  MessageCircle,
   Receipt,
   Settings,
+  Sparkles,
   Users,
   Wallet,
 } from "lucide-react";
@@ -15,7 +19,7 @@ import {
 import type { UserRole } from "@/lib/types";
 import { canViewWorkEvaluations } from "@/lib/work-evaluation-utils";
 
-  /** ERP 주요 메뉴 — Navbar·MobileBottomNav 공통 사용 */
+/** ERP 주요 메뉴 — Navbar·MobileBottomNav 공통 사용 */
 export interface NavItem {
   href: string;
   label: string;
@@ -29,6 +33,8 @@ export interface NavItem {
   hideForPartnerRole?: boolean;
   /** 고객사·파트너·대표 화면에서 숨김 */
   internalEvaluationOnly?: boolean;
+  /** 내부 직원 체험단 대장 메뉴 */
+  experienceOnly?: boolean;
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -43,6 +49,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "계약",
     shortLabel: "계약",
     icon: Building2,
+    hideForPartnerRole: true,
   },
   {
     href: "/executions",
@@ -64,6 +71,14 @@ export const NAV_ITEMS: NavItem[] = [
     shortLabel: "Q&A",
     icon: MapPin,
     placeQaOnly: true,
+  },
+  {
+    href: "/experience",
+    label: "체험단",
+    shortLabel: "체험단",
+    icon: Sparkles,
+    experienceOnly: true,
+    hideForPartnerRole: true,
   },
   {
     href: "/expenses",
@@ -103,7 +118,20 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 /** 현재 경로가 메뉴와 일치하는지 확인 */
-export function isNavActive(pathname: string, href: string): boolean {
+export function isNavActive(
+  pathname: string,
+  href: string,
+  searchParams?: URLSearchParams | null,
+): boolean {
+  if (href === "/dashboard" && pathname === "/dashboard") {
+    const view = searchParams?.get("view");
+    return !view || view === "default";
+  }
+  if (href.includes("?view=")) {
+    if (pathname !== "/dashboard") return false;
+    const view = href.split("view=")[1]?.split("&")[0];
+    return searchParams?.get("view") === view;
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -114,7 +142,38 @@ export function getNavItemsForRole(
   canManageSettings?: boolean,
 ): NavItem[] {
   if (role === "client") {
-    return NAV_ITEMS.filter((item) => item.href === "/dashboard");
+    return [
+      {
+        href: "/dashboard?view=performance",
+        label: "성과",
+        shortLabel: "성과",
+        icon: BarChart3,
+      },
+      {
+        href: "/dashboard?view=collaborate",
+        label: "소통",
+        shortLabel: "소통",
+        icon: MessageCircle,
+      },
+      {
+        href: "/dashboard?view=schedule",
+        label: "일정",
+        shortLabel: "일정",
+        icon: CalendarDays,
+      },
+      {
+        href: "/dashboard?view=experience",
+        label: "체험단",
+        shortLabel: "체험단",
+        icon: Sparkles,
+      },
+      {
+        href: "/dashboard?view=contract",
+        label: "계약",
+        shortLabel: "계약",
+        icon: FileText,
+      },
+    ];
   }
   const canPlaceQa =
     role === "staff" ||
@@ -122,10 +181,12 @@ export function getNavItemsForRole(
     role === "executive" ||
     role === "ceo" ||
     role === "finance_manager";
+  const canExperienceRegistry = canPlaceQa;
   return NAV_ITEMS.filter((item) => {
     if (item.financialOnly && !canViewFinancials) return false;
     if (item.settingsOnly && !canManageSettings) return false;
     if (item.placeQaOnly && !canPlaceQa) return false;
+    if (item.experienceOnly && !canExperienceRegistry) return false;
     if (role === "partner" && item.hideForPartnerRole) return false;
     if (item.internalEvaluationOnly && !canViewWorkEvaluations(role)) return false;
     return true;

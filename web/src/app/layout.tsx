@@ -46,10 +46,7 @@ export default function RootLayout({
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css"
         />
       </head>
-      <body
-        className="min-h-full bg-[var(--background)] text-[var(--foreground)]"
-        style={{ fontFamily: "Pretendard Variable, Pretendard, sans-serif" }}
-      >
+      <body className="min-h-full bg-[var(--background)] text-[var(--foreground)]">
         <ThemeInitScript />
         <Providers>{children}</Providers>
       </body>

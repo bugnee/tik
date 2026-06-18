@@ -32,7 +32,7 @@ export const WORK_ORDER_TASK_LABELS: Record<string, string> = {
   referral: "리셀러",
 };
 
-/** 월 광고비 10% 소개 수수료 */
+/** 월 광고비 10% 리셀러 수수료 */
 export function calcReferralWorkOrderAmount(monthlyFee: number): number {
   return Math.round(monthlyFee * 0.1);
 }
@@ -52,25 +52,49 @@ export const WORK_ORDER_COST_LABELS: Record<WorkOrderCostType, string> = {
   other: "기타",
 };
 
+/** 원가 항목별 UI 색상 (텍스트) */
+export const WORK_ORDER_COST_ACCENT: Record<WorkOrderCostType, string> = {
+  manuscript: "text-cyan-400",
+  filming: "text-violet-400",
+  travel: "text-amber-400",
+  other: "text-rose-400",
+};
+
+/** 원가 항목별 UI 색상 (배경·테두리) */
+export const WORK_ORDER_COST_SURFACE: Record<WorkOrderCostType, string> = {
+  manuscript: "border-cyan-500/30 bg-cyan-500/10",
+  filming: "border-violet-500/30 bg-violet-500/10",
+  travel: "border-amber-500/30 bg-amber-500/10",
+  other: "border-rose-500/30 bg-rose-500/10",
+};
+
 export const WORK_ORDER_STAGE_LABELS: Record<WorkOrderStage, string> = {
   draft: "업무 생성",
   pending_approval: "파트너 승인 대기",
+  pending_staff_confirm: "담당 확인 대기",
   approved: "승인 · 결과 입력 대기",
   delivered: "링크/메모 제출 · 입금 대기",
   paid: "입금 확인",
   order_ready: "오더준 완료",
   rejected: "반려",
+  cancelled: "취소",
+  on_hold: "보류",
+  postponed: "연기",
 };
 
 /** 고객사 포털용 단계 표기 */
 export const CLIENT_WORK_STAGE_LABELS: Record<WorkOrderStage, string> = {
   draft: "업무 준비",
   pending_approval: "업무 배정 · 검토",
+  pending_staff_confirm: "파트너 검토 · 담당 확인",
   approved: "진행 중",
   delivered: "결과 등록 완료",
   paid: "검수 완료",
   order_ready: "반영 완료",
   rejected: "재조정",
+  cancelled: "취소됨",
+  on_hold: "일시 보류",
+  postponed: "일정 연기",
 };
 
 export function workOrderKey(
@@ -264,7 +288,11 @@ const COMPLETED_STAGES: WorkOrderStage[] = ["order_ready", "paid"];
 export const STAGE_PROGRESS_WEIGHT: Record<WorkOrderStage, number> = {
   draft: 0,
   rejected: 8,
-  pending_approval: 25,
+  cancelled: 0,
+  on_hold: 25,
+  postponed: 20,
+  pending_approval: 20,
+  pending_staff_confirm: 35,
   approved: 50,
   delivered: 75,
   paid: 90,
@@ -297,7 +325,13 @@ function isCompletedStage(stage: WorkOrderStage): boolean {
 }
 
 function isPendingStage(stage: WorkOrderStage): boolean {
-  return stage === "draft" || stage === "rejected";
+  return (
+    stage === "draft" ||
+    stage === "rejected" ||
+    stage === "cancelled" ||
+    stage === "on_hold" ||
+    stage === "postponed"
+  );
 }
 
 export function calcContractWorkProgress(

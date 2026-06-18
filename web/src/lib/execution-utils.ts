@@ -113,12 +113,15 @@ export function migratePostLinks(
 
     if (typeof entry !== "object") continue;
 
+    const link = entry as PostLinkEntry;
     result.push({
-      id: entry.id || newLinkId(),
-      url: String(entry.url ?? "").trim(),
-      dueDate: entry.dueDate ?? fallbackDueDate ?? "",
-      completedDate: entry.completedDate ?? "",
-      enteredAt: entry.enteredAt || todayISO(),
+      id: link.id || newLinkId(),
+      url: String(link.url ?? "").trim(),
+      dueDate: link.dueDate ?? fallbackDueDate ?? "",
+      completedDate: link.completedDate ?? "",
+      enteredAt: link.enteredAt || todayISO(),
+      ...(link.keyword ? { keyword: link.keyword } : {}),
+      ...(link.searchRank != null ? { searchRank: link.searchRank } : {}),
     });
   }
 

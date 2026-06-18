@@ -16,6 +16,7 @@ import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Card } from "@/components/ui/Card";
 import {
   DataTable,
@@ -28,6 +29,11 @@ import {
 } from "@/components/ui/DataTable";
 import { Input, Select, Textarea } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
+import { RegionSelect } from "@/components/location/RegionSelect";
+import {
+  locationMatchesSearch,
+  LOCATION_FIELD_HINT,
+} from "@/lib/location-profile-utils";
 import { PartnerFilterBadge } from "@/components/ui/PartnerFilterBadge";
 import { StatCard } from "@/components/ui/StatCard";
 import { cn } from "@/lib/cn";
@@ -49,6 +55,7 @@ import {
 import { getTaskChannelProgressBarColor } from "@/lib/task-channel-utils";
 import { contractAssigneeUsers, getUserName } from "@/lib/selectors";
 import type { Partner, PartnerCategory, PartnerInput, PartnerStatus } from "@/lib/types";
+import { useFormDirty } from "@/hooks/useFormDirty";
 
 type TabKey =
   | "all"
@@ -115,6 +122,11 @@ export function PartnersManager() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Partner | null>(null);
   const [form, setForm] = useState<PartnerInput>(emptyForm());
+  const formDirty = useFormDirty(
+    modalOpen,
+    editing?.id ?? "create",
+    form,
+  );
 
   const counts = useMemo(() => {
     const active = partners.filter(isPartnerExpenseSelectable);
@@ -158,7 +170,8 @@ export function PartnersManager() {
           (slot) =>
             slot.url?.toLowerCase().includes(q) ||
             slot.nickname?.toLowerCase().includes(q),
-        )
+        ) ||
+        locationMatchesSearch(p, q)
       );
     });
   }, [partners, tab, search, showInactive, data]);
@@ -248,7 +261,7 @@ export function PartnersManager() {
         <SearchBar
           value={search}
           onChange={setSearch}
-          placeholder="업체명 · 우리쪽 담당 · 파트너 담당 · 메모 · 계좌 검색"
+          placeholder="업체명 · 담당 · 메모 · 계좌 · 지역 검색"
         />
         {tab !== "all" && (
           <button
@@ -502,6 +515,29 @@ export function PartnersManager() {
             />
           </div>
 
+          <div className="rounded-xl border border-cyan-500/15 bg-cyan-500/5 p-4 space-y-3">
+            <p className="text-xs font-medium text-cyan-300/90">
+              활동 지역 · 체험단 참여 지역
+            </p>
+            <p className="text-xs text-zinc-500">{LOCATION_FIELD_HINT}</p>
+            <RegionSelect
+              province={form.regionProvince ?? ""}
+              city={form.regionCity ?? ""}
+              onProvinceChange={(regionProvince) =>
+                setForm((prev) => ({ ...prev, regionProvince, regionCity: "" }))
+              }
+              onCityChange={(regionCity) =>
+                setForm((prev) => ({ ...prev, regionCity }))
+              }
+            />
+            <Input
+              label="상세 주소"
+              value={form.address ?? ""}
+              onChange={(e) => setForm({ ...form, address: e.target.value })}
+              placeholder="사무실 · 스튜디오 주소"
+            />
+          </div>
+
           <div>
             <p className="mb-2 text-xs font-medium text-zinc-400">
               파트너 링크 · 닉네임
@@ -575,7 +611,9 @@ export function PartnersManager() {
             >
               취소
             </Button>
-            <Button type="submit">{editing ? "저장" : "등록"}</Button>
+            <SaveButton type="submit" dirty={formDirty}>
+              {editing ? "저장" : "등록"}
+            </SaveButton>
           </div>
         </form>
       </Modal>

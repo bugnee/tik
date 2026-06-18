@@ -1,6 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
+import { useFormDirty } from "@/hooks/useFormDirty";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Select, Textarea } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
@@ -64,6 +66,11 @@ export function ExecutionFormModal({
   const dueStyle = DEADLINE_STAGE_STYLES[dueStage];
   const progressMet =
     form.targetCount > 0 && form.completedCount >= form.targetCount;
+  const formDirty = useFormDirty(
+    open,
+    editing?.id ?? "create",
+    form,
+  );
 
   return (
     <Modal
@@ -205,6 +212,7 @@ export function ExecutionFormModal({
               : [createEmptyPostLink(form.dueDate)]
           }
           defaultDueDate={form.dueDate}
+          contract={data.contracts.find((c) => c.id === form.contractId) ?? null}
           onChange={(postLinks) => setForm({ ...form, postLinks })}
         />
 
@@ -212,7 +220,9 @@ export function ExecutionFormModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             취소
           </Button>
-          <Button type="submit">{editing ? "저장" : "등록"}</Button>
+          <SaveButton type="submit" dirty={formDirty}>
+            {editing ? "저장" : "등록"}
+          </SaveButton>
         </div>
       </form>
     </Modal>

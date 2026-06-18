@@ -2,10 +2,12 @@ import { cn } from "@/lib/cn";
 import { Loader2 } from "lucide-react";
 import { forwardRef } from "react";
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "ghost" | "danger";
   size?: "sm" | "md" | "lg";
   loading?: boolean;
+  /** 저장 대기 등 — 입력값이 baseline과 다를 때 강조 */
+  dirty?: boolean;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -16,6 +18,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       size = "md",
       loading,
       disabled,
+      dirty,
       children,
       ...props
     },
@@ -47,6 +50,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           "disabled:cursor-not-allowed disabled:opacity-50",
           variants[variant],
           sizes[size],
+          dirty &&
+            "ring-2 ring-amber-400/60 shadow-lg shadow-amber-900/20 dark:ring-amber-400/50",
           className,
         )}
         {...props}

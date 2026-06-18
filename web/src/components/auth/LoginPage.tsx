@@ -1,23 +1,33 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Building2, Loader2, LogIn, Plane } from "lucide-react";
 import { DEMO_GOOGLE_ACCOUNTS, useAuth } from "@/context/AuthContext";
 import { useData } from "@/context/DataContext";
 import { AppReadyGate } from "@/components/layout/Providers";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { RoleApprovalCountBadge } from "@/components/ui/RoleApprovalCountBadge";
 import { getClientPortalAccounts } from "@/lib/selectors";
+import { getRoleExecutionApprovalCount } from "@/lib/role-execution-approval-utils";
 import type { AuthSessionUser } from "@/lib/auth-utils";
 
 function LoginScreen() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const data = useData();
   const { status, loginWithGoogle, loginWithDemoAccount, isSupabaseAuth } =
     useAuth();
   const [error, setError] = useState<string | null>(null);
   const [loadingGoogle, setLoadingGoogle] = useState(false);
+
+  useEffect(() => {
+    const urlError = searchParams.get("error");
+    if (urlError) {
+      setError(decodeURIComponent(urlError));
+    }
+  }, [searchParams]);
 
   const clientPortalAccounts = useMemo(
     () => getClientPortalAccounts(data),
@@ -36,6 +46,12 @@ function LoginScreen() {
       ),
     [clientPortalAccounts, staticDemoIds],
   );
+
+  function demoApprovalCount(googleId: string): number {
+    const user = data.users.find((item) => item.googleId === googleId);
+    if (!user) return 0;
+    return getRoleExecutionApprovalCount(data, user.id, user.role);
+  }
 
   useEffect(() => {
     if (status === "approved") router.replace("/dashboard");
@@ -95,6 +111,11 @@ function LoginScreen() {
           <p className="mt-2 text-sm text-zinc-400">
             Google 계정으로 로그인 후, 대표·임원 승인을 받아 이용합니다.
           </p>
+          {isSupabaseAuth && (
+            <p className="mt-2 text-xs text-emerald-400/90">
+              Google OAuth 연결됨 · 시드에 등록된 이메일은 자동 역할 매칭
+            </p>
+          )}
         </div>
 
         <Button
@@ -159,6 +180,10 @@ function LoginScreen() {
                       >
                         {account.roleLabel}
                       </span>
+                      <RoleApprovalCountBadge
+                        count={demoApprovalCount(account.googleId)}
+                        compact
+                      />
                     </div>
                     <p className="text-xs text-zinc-500">{account.email}</p>
                     {account.description && (
@@ -214,7 +239,15 @@ function LoginScreen() {
 export function LoginPage() {
   return (
     <AppReadyGate message="로그인 화면 준비 중…">
-      <LoginScreen />
+      <Suspense
+        fallback={
+          <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+            <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+          </div>
+        }
+      >
+        <LoginScreen />
+      </Suspense>
     </AppReadyGate>
   );
 }

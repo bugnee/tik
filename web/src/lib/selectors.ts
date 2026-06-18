@@ -186,19 +186,23 @@ export function buildOrgTree(data: AppData): OrgNode {
   const leaders = data.users.filter((u) => u.role === "team_leader");
   const staff = data.users.filter((u) => u.role === "staff");
 
-  function userRevenue(userId: string): number {
-    return data.contracts
-      .filter((c) => c.assignedStaffId === userId)
-      .reduce((s, c) => s + c.monthlyFee, 0);
+  const revenueByStaff = new Map<string, number>();
+  const revenueByTeam = new Map<string, number>();
+  let totalRevenue = 0;
+  for (const contract of data.contracts) {
+    totalRevenue += contract.monthlyFee;
+    revenueByStaff.set(
+      contract.assignedStaffId,
+      (revenueByStaff.get(contract.assignedStaffId) ?? 0) + contract.monthlyFee,
+    );
+    revenueByTeam.set(
+      contract.teamId,
+      (revenueByTeam.get(contract.teamId) ?? 0) + contract.monthlyFee,
+    );
   }
 
-  function teamRevenue(teamId: string): number {
-    return data.contracts
-      .filter((c) => c.teamId === teamId)
-      .reduce((s, c) => s + c.monthlyFee, 0);
-  }
-
-  const totalRevenue = data.contracts.reduce((s, c) => s + c.monthlyFee, 0);
+  const userRevenue = (userId: string) => revenueByStaff.get(userId) ?? 0;
+  const teamRevenue = (teamId: string) => revenueByTeam.get(teamId) ?? 0;
 
   const execNodes: OrgNode[] = executives.map((exec) => ({
     id: exec.id,
@@ -420,8 +424,14 @@ export function getContractActivity(
 export function getClientContractForUser(
   data: AppData,
   userId: string,
+  hintContractId?: string,
 ): Contract | null {
-  const contractId = data.users.find((u) => u.id === userId)?.contractId;
+  const user = data.users.find((u) => u.id === userId);
+  const contractId =
+    user?.contractId ??
+    hintContractId ??
+    data.accountProfiles?.find((profile) => profile.linkedUserId === userId)
+      ?.contractId;
   if (!contractId) return null;
   return data.contracts.find((c) => c.id === contractId) ?? null;
 }
@@ -452,6 +462,8 @@ export interface ClientReportLink {
   completedDate?: string;
   enteredAt?: string;
   source: string;
+  keyword?: string;
+  searchRank?: number;
 }
 
 /** 고객사 보고서용 게시 링크 (실행 + 워크오더) */
@@ -473,6 +485,8 @@ export function getClientReportLinks(
         completedDate: link.completedDate,
         enteredAt: link.enteredAt,
         source: "실행 진행",
+        keyword: link.keyword,
+        searchRank: link.searchRank,
       });
     });
   });
@@ -491,6 +505,8 @@ export function getClientReportLinks(
           completedDate: link.completedDate ?? order.deliveredAt,
           enteredAt: link.enteredAt ?? order.deliveredAt,
           source: "집행 업무",
+          keyword: link.keyword,
+          searchRank: link.searchRank,
         });
       });
     });

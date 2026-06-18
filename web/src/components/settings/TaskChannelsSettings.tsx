@@ -7,6 +7,7 @@ import { useRole } from "@/context/RoleContext";
 import { Badge } from "@/components/ui/Badge";
 import { TaskChannelBadge } from "@/components/ui/TaskChannelBadge";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Card, CardHeader } from "@/components/ui/Card";
 import {
   DataTable,
@@ -40,6 +41,7 @@ import {
   getActiveExpenseCategories,
   getSortedExpenseCategories,
 } from "@/lib/expense-category-utils";
+import { useFormDirty } from "@/hooks/useFormDirty";
 
 const KIND_LABELS: Record<TaskChannelKind, string> = {
   contract_target: "계약 목표 · 업무 생성",
@@ -79,6 +81,11 @@ export function TaskChannelsSettings() {
   const sorted = useMemo(
     () => getSortedTaskChannels(taskChannels),
     [taskChannels],
+  );
+  const formDirty = useFormDirty(
+    modalOpen && !!form,
+    editing?.id ?? "create",
+    form ?? {},
   );
 
   if (!canManageContractTerms) {
@@ -363,7 +370,9 @@ export function TaskChannelsSettings() {
               >
                 취소
               </Button>
-              <Button type="submit">{editing ? "저장" : "추가"}</Button>
+              <SaveButton type="submit" dirty={formDirty}>
+                {editing ? "저장" : "추가"}
+              </SaveButton>
             </div>
           </form>
         )}

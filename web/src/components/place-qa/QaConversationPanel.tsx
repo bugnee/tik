@@ -4,9 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Link2, MessageCircle, Send, XCircle } from "lucide-react";
 import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
+import { usePlaceQa } from "@/features/place-qa/usePlaceQa";
 import { PostLinkOpinionDetail } from "@/components/place-qa/PostLinkOpinionDetail";
+import {
+  QaAttachmentField,
+  QaMessageAttachmentList,
+} from "@/components/place-qa/QaAttachmentField";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input, Textarea } from "@/components/ui/FormFields";
 import {
@@ -24,7 +30,7 @@ import {
   threadNeedsStaffReply,
 } from "@/lib/place-qa-utils";
 import { getPostLinkOpinionsForContract } from "@/lib/post-link-opinion-utils";
-import { QA_THREAD_STATUS_LABELS, type PostLinkOpinion } from "@/lib/types";
+import { QA_THREAD_STATUS_LABELS, type PostLinkOpinion, type QaMessageAttachment } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
 const STATUS_VARIANT: Record<
@@ -47,13 +53,16 @@ type FeedItem =
 export function QaConversationPanel({
   contractId,
   compact = false,
+  highlightAnchorIds,
 }: {
   contractId: string;
   compact?: boolean;
+  highlightAnchorIds?: Set<string>;
 }) {
   const data = useData();
+  const qa = usePlaceQa();
   const { currentUser, activeRole } = useRole();
-  const { createQaThread, replyQaThread, closeQaThread } = data;
+  const { createQaThread, replyQaThread, closeQaThread } = qa;
 
   const contract = getContractForQa(data, contractId);
   const threads = useMemo(
@@ -94,7 +103,14 @@ export function QaConversationPanel({
   const [selection, setSelection] = useState<FeedSelection | null>(null);
   const [newSubject, setNewSubject] = useState("");
   const [newBody, setNewBody] = useState("");
+  const [newAttachments, setNewAttachments] = useState<QaMessageAttachment[]>([]);
   const [replyBody, setReplyBody] = useState("");
+  const [replyAttachments, setReplyAttachments] = useState<QaMessageAttachment[]>([]);
+  const composeDirty = Boolean(
+    newSubject.trim() || newBody.trim() || newAttachments.length > 0,
+  );
+  const replyDirty =
+    replyBody.trim().length > 0 || replyAttachments.length > 0;
   const [showCompose, setShowCompose] = useState(false);
 
   const selectedThread =
@@ -132,24 +148,39 @@ export function QaConversationPanel({
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!newSubject.trim() || !newBody.trim()) return;
+    if (!newSubject.trim() || (!newBody.trim() && newAttachments.length === 0)) {
+      return;
+    }
     const thread = createQaThread(
       contractId,
       newSubject.trim(),
       newBody.trim(),
       currentUser.id,
+      newAttachments,
     );
     setNewSubject("");
     setNewBody("");
+    setNewAttachments([]);
     setShowCompose(false);
     setSelection({ kind: "thread", id: thread.id });
   }
 
   function handleReply(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedThread || !replyBody.trim()) return;
-    replyQaThread(selectedThread.id, replyBody.trim(), currentUser.id);
+    if (
+      !selectedThread ||
+      (!replyBody.trim() && replyAttachments.length === 0)
+    ) {
+      return;
+    }
+    replyQaThread(
+      selectedThread.id,
+      replyBody.trim(),
+      currentUser.id,
+      replyAttachments,
+    );
     setReplyBody("");
+    setReplyAttachments([]);
   }
 
   return (
@@ -189,12 +220,23 @@ export function QaConversationPanel({
             onChange={(e) => setNewBody(e.target.value)}
             placeholder="질문 내용을 입력해 주세요"
             rows={4}
-            required
+          />
+          <QaAttachmentField
+            attachments={newAttachments}
+            onChange={setNewAttachments}
           />
           <div className="flex gap-2">
-            <Button type="submit" size="sm">
+            <SaveButton
+              type="submit"
+              size="sm"
+              dirty={composeDirty}
+              disabled={
+                !newSubject.trim() ||
+                (!newBody.trim() && newAttachments.length === 0)
+              }
+            >
               등록
-            </Button>
+            </SaveButton>
             <Button
               type="button"
               size="sm"
@@ -240,10 +282,15 @@ export function QaConversationPanel({
                   const isSelected =
                     selection?.kind === "thread" &&
                     selection.id === thread.id;
+                  const anchorId = `client-action-qa-${thread.id}`;
+                  const isActionHighlight =
+                    thread.status === "answered" &&
+                    highlightAnchorIds?.has(anchorId);
 
                   return (
                     <button
                       key={`thread-${thread.id}`}
+                      id={anchorId}
                       type="button"
                       onClick={() =>
                         setSelection({ kind: "thread", id: thread.id })
@@ -252,7 +299,9 @@ export function QaConversationPanel({
                         "w-full rounded-xl border px-3 py-2.5 text-left transition-colors",
                         isSelected
                           ? "border-emerald-500/40 bg-emerald-500/10"
-                          : "border-zinc-800 bg-zinc-950/30 hover:border-zinc-700",
+                          : isActionHighlight
+                            ? "border-amber-500/50 bg-amber-500/5 ring-2 ring-amber-500/40"
+                            : "border-zinc-800 bg-zinc-950/30 hover:border-zinc-700",
                       )}
                     >
                       <p className="truncate text-sm font-medium text-zinc-200">
@@ -370,7 +419,12 @@ export function QaConversationPanel({
                         )}{" "}
                         · {msg.createdAt}
                       </p>
-                      <p className="whitespace-pre-wrap">{msg.body}</p>
+                      <p className="whitespace-pre-wrap">
+                        {msg.body || (msg.attachments?.length ? "(첨부파일)" : "")}
+                      </p>
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <QaMessageAttachmentList attachments={msg.attachments} />
+                      )}
                     </div>
                   );
                 })}
@@ -389,10 +443,21 @@ export function QaConversationPanel({
                     }
                     rows={3}
                   />
-                  <Button type="submit" size="sm" disabled={!replyBody.trim()}>
+                  <QaAttachmentField
+                    attachments={replyAttachments}
+                    onChange={setReplyAttachments}
+                  />
+                  <SaveButton
+                    type="submit"
+                    size="sm"
+                    dirty={replyDirty}
+                    disabled={
+                      !replyBody.trim() && replyAttachments.length === 0
+                    }
+                  >
                     <Send className="h-4 w-4" />
                     {activeRole === "client" ? "전송" : "답변 전송"}
-                  </Button>
+                  </SaveButton>
                 </form>
               )}
               {selectedThread.status !== "closed" &&

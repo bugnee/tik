@@ -6,6 +6,7 @@ import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Card, CardHeader } from "@/components/ui/Card";
 import {
   DataTable,
@@ -29,6 +30,7 @@ import type {
   ExpenseCategoryInput,
   PartnerCategory,
 } from "@/lib/types";
+import { useFormDirty } from "@/hooks/useFormDirty";
 
 export function ExpenseCategoriesSettings() {
   const data = useData();
@@ -55,6 +57,11 @@ export function ExpenseCategoriesSettings() {
   const sorted = useMemo(
     () => getSortedExpenseCategories(expenseCategories),
     [expenseCategories],
+  );
+  const formDirty = useFormDirty(
+    modalOpen && !!form,
+    editing?.id ?? "create",
+    form ?? {},
   );
 
   if (!canManageContractTerms) {
@@ -254,7 +261,9 @@ export function ExpenseCategoriesSettings() {
               onChange={(v) => setForm({ ...form, isActive: v })}
             />
             <div className="flex gap-2 pt-2">
-              <Button type="submit">저장</Button>
+              <SaveButton type="submit" dirty={formDirty}>
+                저장
+              </SaveButton>
               <Button
                 type="button"
                 variant="secondary"

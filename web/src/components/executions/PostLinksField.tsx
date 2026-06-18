@@ -16,7 +16,9 @@ import {
   migratePostLinks,
   todayISO,
 } from "@/lib/execution-utils";
-import type { PostLinkEntry } from "@/lib/types";
+import { applySelectedClientLinksToPostLinks } from "@/lib/client-links-utils";
+import { ClientLinkMultiSelect } from "@/components/contracts/ClientLinkMultiSelect";
+import type { Contract, PostLinkEntry } from "@/lib/types";
 
 const STAGE_DOT: Record<keyof typeof DEADLINE_STAGE_STYLES, string> = {
   safe: "bg-emerald-400",
@@ -41,10 +43,13 @@ export function PostLinksField({
   links,
   onChange,
   defaultDueDate,
+  contract,
 }: {
   links: PostLinkEntry[];
   onChange: (links: PostLinkEntry[]) => void;
   defaultDueDate?: string;
+  /** 연결 계약 — 고객사 채널 링크 다중 선택 제공 */
+  contract?: Contract | null;
 }) {
   const normalized = migratePostLinks(links, defaultDueDate);
   const items =
@@ -77,6 +82,21 @@ export function PostLinksField({
 
   return (
     <div className="space-y-3">
+      {contract && (
+        <ClientLinkMultiSelect
+          contract={contract}
+          onApply={(_urls, selectedKeys) => {
+            onChange(
+              applySelectedClientLinksToPostLinks(
+                selectedKeys,
+                contract,
+                items,
+                defaultDueDate,
+              ),
+            );
+          }}
+        />
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <label className="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
           <Link2 className="h-3.5 w-3.5" />

@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { useData } from "@/context/DataContext";
+import { useBonus } from "@/features/bonus/useBonus";
+import type { BonusStore } from "@/features/bonus/create-bonus-store";
 import { useRole } from "@/context/RoleContext";
 import {
   enrichBonusPayment,
@@ -14,6 +16,7 @@ import {
   getPendingBonusForRole,
 } from "@/lib/bonus-utils";
 import { BonusPayDateLine } from "@/components/bonus/BonusPayScheduleNotice";
+import { BonusAmountBreakdownGrid } from "@/components/bonus/BonusAmountBreakdown";
 import { BONUS_STAGE_LABELS } from "@/lib/types";
 
 type ApprovalRole = "team_leader" | "executive" | "ceo";
@@ -25,7 +28,7 @@ const ROLE_CONFIG: Record<
     subtitle: string;
     nextLabel: string;
     approve: (
-      ctx: ReturnType<typeof useData>,
+      ctx: BonusStore,
       id: string,
       userId: string,
     ) => void;
@@ -53,8 +56,9 @@ const ROLE_CONFIG: Record<
 
 export function BonusApprovalPanel({ role }: { role: ApprovalRole }) {
   const data = useData();
+  const bonus = useBonus();
   const { currentUser } = useRole();
-  const { bonusPayments, rejectBonus } = data;
+  const { bonusPayments, rejectBonus } = bonus;
   const config = ROLE_CONFIG[role];
 
   let pending = getPendingBonusForRole(bonusPayments, role);
@@ -106,25 +110,7 @@ export function BonusApprovalPanel({ role }: { role: ApprovalRole }) {
               <Badge variant="info">{BONUS_STAGE_LABELS[item.stage]}</Badge>
             </div>
 
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <AmountCell
-                label={`담당 ${item.staffPercentApplied}%`}
-                value={item.staffBonusAmount}
-              />
-              <AmountCell
-                label={`팀장 ${item.teamLeaderPercentApplied}%`}
-                value={item.teamLeaderBonusAmount}
-              />
-              <AmountCell
-                label={`임직원 ${item.executivePercentApplied}%`}
-                value={item.executiveBonusAmount}
-              />
-              <AmountCell
-                label="총 지급 성과금(세전)"
-                value={item.totalAmount}
-                highlight
-              />
-            </div>
+            <BonusAmountBreakdownGrid amounts={item} viewerRole={role} />
 
             <div className="mt-4 flex justify-end gap-2">
               <Button
@@ -138,7 +124,7 @@ export function BonusApprovalPanel({ role }: { role: ApprovalRole }) {
               <Button
                 size="sm"
                 onClick={() =>
-                  config.approve(data, item.id, currentUser.id)
+                  config.approve(bonus, item.id, currentUser.id)
                 }
               >
                 <Check className="h-3.5 w-3.5" />
@@ -157,39 +143,8 @@ export function BonusApprovalPanel({ role }: { role: ApprovalRole }) {
   );
 }
 
-function AmountCell({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: number;
-  highlight?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-lg border px-3 py-2 ${
-        highlight
-          ? "border-emerald-500/30 bg-emerald-500/5"
-          : "border-zinc-800 bg-zinc-900/40"
-      }`}
-    >
-      <p className="text-[10px] uppercase tracking-wider text-zinc-500">
-        {label}
-      </p>
-      <p
-        className={`mt-0.5 font-mono text-sm font-semibold ${
-          highlight ? "text-emerald-400" : "text-zinc-300"
-        }`}
-      >
-        {formatBonusKRW(value)}
-      </p>
-    </div>
-  );
-}
-
 export function BonusStatusSummary() {
-  const { bonusPayments } = useData();
+  const { bonusPayments } = useBonus();
   const counts = {
     pending: bonusPayments.filter((p) =>
       [

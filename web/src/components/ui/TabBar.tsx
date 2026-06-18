@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { getTabAccent, getTabButtonClass } from "@/lib/tab-ui-utils";
+import { NavAlertBadge } from "@/components/ui/NavAlertBadge";
 import type { TaskChannelAccent } from "@/lib/types";
 
 export interface TabBarItem<T extends string> {
@@ -10,6 +11,8 @@ export interface TabBarItem<T extends string> {
   shortLabel?: string;
   icon?: LucideIcon;
   accent?: TaskChannelAccent;
+  /** 처리 대기 건수 */
+  badgeCount?: number;
 }
 
 interface TabBarProps<T extends string> {
@@ -34,7 +37,7 @@ export function TabBar<T extends string>({
       )}
       role="tablist"
     >
-      {items.map(({ id, label, shortLabel, icon: Icon, accent }, index) => {
+      {items.map(({ id, label, shortLabel, icon: Icon, accent, badgeCount }, index) => {
         const isActive = active === id;
         const tabAccent = accent ?? getTabAccent(index);
         return (
@@ -51,8 +54,14 @@ export function TabBar<T extends string>({
             )}
           >
             {Icon && <Icon className="h-4 w-4 shrink-0" />}
-            <span className="truncate sm:hidden">{shortLabel ?? label}</span>
-            <span className="hidden truncate sm:inline">{label}</span>
+            <span className="inline-flex min-w-0 items-center gap-1.5 truncate sm:hidden">
+              <span className="truncate">{shortLabel ?? label}</span>
+              <NavAlertBadge count={badgeCount ?? 0} inline />
+            </span>
+            <span className="hidden min-w-0 items-center gap-1.5 truncate sm:inline-flex">
+              <span className="truncate">{label}</span>
+              <NavAlertBadge count={badgeCount ?? 0} inline />
+            </span>
           </button>
         );
       })}

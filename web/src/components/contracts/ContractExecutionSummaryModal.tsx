@@ -11,6 +11,8 @@ import { TaskChannelBadge } from "@/components/ui/TaskChannelBadge";
 import { useData } from "@/context/DataContext";
 import { sortExecutionsByChannel } from "@/lib/execution-generation-utils";
 import { formatKRW } from "@/lib/finance";
+import { getPartnerName } from "@/lib/partner-utils";
+import { cn } from "@/lib/cn";
 import {
   getCompletionRate,
   getContractExecutions,
@@ -26,12 +28,17 @@ import {
   EXECUTION_STATUS_LABELS,
   PAYOUT_LABELS,
   type ExpenseCategory,
+  type PayoutStatus,
   type WorkOrderTaskType,
 } from "@/lib/types";
 import {
   calcContractWorkProgress,
   filterWorkOrdersByContract,
 } from "@/lib/work-order-utils";
+
+function expenseNeedsPayment(status: PayoutStatus): boolean {
+  return status !== "paid";
+}
 
 type ContractExecutionSummaryModalProps = {
   contractId: string | null;
@@ -276,7 +283,12 @@ export function ContractExecutionSummaryModal({
             </p>
           ) : (
             <div className="max-h-48 space-y-2 overflow-y-auto">
-              {expenses.map((expense) => (
+              {expenses.map((expense) => {
+                const partnerName = getPartnerName(data.partners, expense.partnerId);
+                const payable =
+                  Boolean(expense.partnerId) && expenseNeedsPayment(expense.payoutStatus);
+
+                return (
                 <div
                   key={expense.id}
                   className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-zinc-800/80 bg-zinc-950/30 px-3 py-2 text-sm"
@@ -286,6 +298,22 @@ export function ContractExecutionSummaryModal({
                       {getExpenseCategoryLabel(data.expenseCategories, expense.category)} ·{" "}
                       {expense.description}
                     </p>
+                    {expense.partnerId && (
+                      <Link
+                        href={`/partners/${expense.partnerId}`}
+                        onClick={onClose}
+                        className={cn(
+                          "mt-1 inline-flex items-center gap-1 text-xs transition-colors hover:underline",
+                          payable
+                            ? "font-medium text-cyan-400 hover:text-cyan-300"
+                            : "text-zinc-500 hover:text-zinc-300",
+                        )}
+                      >
+                        {payable ? "지급 대상 · " : "파트너 · "}
+                        {partnerName}
+                        <ExternalLink className="h-3 w-3 shrink-0 opacity-70" />
+                      </Link>
+                    )}
                     <p className="mt-0.5 text-xs text-zinc-600">
                       {PAYOUT_LABELS[expense.payoutStatus]}
                       {expense.paymentDueDate &&
@@ -296,7 +324,8 @@ export function ContractExecutionSummaryModal({
                     {formatKRW(expense.amount)}
                   </span>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </section>

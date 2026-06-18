@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/Badge";
 import { TaskChannelBadge } from "@/components/ui/TaskChannelBadge";
 import {
   getWorkStatusContractHref,
+  calcWorkStatusSharePercent,
   WORK_STATUS_CATEGORY_LABELS,
   type WorkStatusCategory,
   type WorkStatusPanelMode,
@@ -29,6 +30,7 @@ export function WorkStatusTreeView({
   role,
   category,
   mode,
+  totalCount,
   onNavigate,
 }: {
   nodes: WorkStatusTreeNode[];
@@ -36,6 +38,7 @@ export function WorkStatusTreeView({
   role: UserRole;
   category: WorkStatusCategory;
   mode: WorkStatusPanelMode;
+  totalCount?: number;
   onNavigate?: () => void;
 }) {
   const router = useRouter();
@@ -81,7 +84,7 @@ export function WorkStatusTreeView({
       <div className="space-y-1">
         {nodes.map((node) => (
           <TreeNode
-            key={node.type === "group" ? node.id : node.item.id}
+            key={node.id}
             node={node}
             depth={0}
             expanded={expanded}
@@ -89,6 +92,7 @@ export function WorkStatusTreeView({
             onNavigate={goToContract}
             data={data}
             category={category}
+            totalCount={totalCount}
           />
         ))}
       </div>
@@ -104,6 +108,7 @@ function TreeNode({
   onNavigate,
   data,
   category,
+  totalCount,
 }: {
   node: WorkStatusTreeNode;
   depth: number;
@@ -112,6 +117,7 @@ function TreeNode({
   onNavigate: (contractId: string) => void;
   data: AppData;
   category: WorkStatusCategory;
+  totalCount?: number;
 }) {
   if (node.type === "item") {
     const item = node.item;
@@ -192,13 +198,20 @@ function TreeNode({
             <p className="text-[11px] text-zinc-500">{node.sublabel}</p>
           )}
         </div>
-        <Badge variant="info">{node.count}건</Badge>
+        <Badge variant="info">
+          {node.count}건
+          {totalCount != null && totalCount > 0 && (
+            <span className="ml-1 opacity-80">
+              ({calcWorkStatusSharePercent(node.count, totalCount)}%)
+            </span>
+          )}
+        </Badge>
       </button>
       {isOpen && (
         <div className="mt-1 space-y-1 border-l border-zinc-800/80 pl-2">
           {node.children.map((child) => (
             <TreeNode
-              key={child.type === "group" ? child.id : child.item.id}
+              key={child.id}
               node={child}
               depth={depth + 1}
               expanded={expanded}
@@ -206,6 +219,7 @@ function TreeNode({
               onNavigate={onNavigate}
               data={data}
               category={category}
+              totalCount={node.count}
             />
           ))}
         </div>

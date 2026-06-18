@@ -7,6 +7,7 @@ import { AccessApprovalPanel } from "@/components/auth/AccessApprovalPanel";
 import { Badge } from "@/components/ui/Badge";
 import { RoleBadge } from "@/components/ui/RoleBadge";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Card, CardHeader } from "@/components/ui/Card";
 import {
   DataTable,
@@ -20,6 +21,7 @@ import { Modal } from "@/components/ui/Modal";
 import { getClientPortalAccounts, getTeamName, getUserName } from "@/lib/selectors";
 import type { Team, TeamInput, User, UserInput, UserRole } from "@/lib/types";
 import { ROLE_LABELS } from "@/lib/types";
+import { useFormDirty } from "@/hooks/useFormDirty";
 
 const emptyUser = (): UserInput => ({
   name: "",
@@ -55,6 +57,16 @@ export function UsersManager() {
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [userForm, setUserForm] = useState<UserInput>(emptyUser());
   const [teamForm, setTeamForm] = useState<TeamInput>(emptyTeam());
+  const userFormDirty = useFormDirty(
+    userModal,
+    editingUser?.id ?? "create",
+    userForm,
+  );
+  const teamFormDirty = useFormDirty(
+    teamModal,
+    editingTeam?.id ?? "create",
+    teamForm,
+  );
 
   function openUserCreate() {
     setEditingUser(null);
@@ -132,11 +144,11 @@ export function UsersManager() {
         action={
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => {
-              if (confirm("모든 데이터를 초기 시드로 되돌립니다. 계속하시겠습니까?")) {
-                resetData();
+              if (confirm("모든 ERP 데이터를 최신 샘플 시드로 되돌립니다. 로그인은 유지됩니다. 계속하시겠습니까?")) {
+                resetData({ reload: true });
               }
             }}>
-              데이터 초기화
+              샘플 데이터 초기화
             </Button>
             <Button variant="secondary" onClick={openTeamCreate}>
               <Plus className="h-4 w-4" />
@@ -420,7 +432,9 @@ export function UsersManager() {
             <Button type="button" variant="secondary" onClick={() => setUserModal(false)}>
               취소
             </Button>
-            <Button type="submit">{editingUser ? "저장" : "추가"}</Button>
+            <SaveButton type="submit" dirty={userFormDirty}>
+              {editingUser ? "저장" : "추가"}
+            </SaveButton>
           </div>
         </form>
       </Modal>
@@ -467,7 +481,9 @@ export function UsersManager() {
             <Button type="button" variant="secondary" onClick={() => setTeamModal(false)}>
               취소
             </Button>
-            <Button type="submit">{editingTeam ? "저장" : "추가"}</Button>
+            <SaveButton type="submit" dirty={teamFormDirty}>
+              {editingTeam ? "저장" : "추가"}
+            </SaveButton>
           </div>
         </form>
       </Modal>

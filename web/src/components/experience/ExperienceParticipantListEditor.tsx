@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Plus, Trash2, UserPlus } from "lucide-react";
-import { useData } from "@/context/DataContext";
+import { useExperience } from "@/features/experience/useExperience";
 import { useRole } from "@/context/RoleContext";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/FormFields";
@@ -195,8 +195,11 @@ export function ExperienceParticipantListEditor({
   campaign: ExperienceCampaign;
   readOnly?: boolean;
 }) {
-  const { addExperienceParticipant, updateExperienceParticipant, removeExperienceParticipant } =
-    useData();
+  const {
+    addExperienceParticipant,
+    updateExperienceParticipant,
+    removeExperienceParticipant,
+  } = useExperience();
   const { currentUser } = useRole();
   const [draft, setDraft] = useState<ExperienceParticipantInput>(() =>
     emptyParticipantInput(campaign),

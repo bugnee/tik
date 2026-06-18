@@ -10,23 +10,19 @@ import {
   type ReactNode,
 } from "react";
 import { createSeedData } from "@/lib/seed-data";
+import { DEMO_TODAY } from "@/lib/contract-lifecycle";
+import { applyJejuOseongOperationalSample } from "@/lib/jeju-oseong-operational-data";
 import {
   addDays,
   calcBonusAmounts,
   calcBonusClosingDeadline,
-  canRequestBonus,
-  createBonusPaymentFromContract,
   calcScheduledPayDate,
-  isBonusPayDue,
-  validateStaffPercent,
-  validateTeamLeaderLimit,
 } from "@/lib/bonus-utils";
-import { migratePostLinks, getValidPostLinks } from "@/lib/execution-utils";
+import { migratePostLinks } from "@/lib/execution-utils";
 import {
   ensureAllContractExecutions,
   ensureExecutionsForContract,
   executionSnapshotEqual,
-  findExecutionForWorkOrder,
 } from "@/lib/execution-generation-utils";
 import { syncAllContractProgress } from "@/lib/selectors";
 import {
@@ -34,15 +30,6 @@ import {
   computeAutoEvaluationScores,
   computeEvaluationMetrics,
 } from "@/lib/work-evaluation-utils";
-import {
-  buildExpenseDescription,
-  buildReferralCostLines,
-  calcWorkOrderTotal,
-  generateWorkOrdersForContract,
-  shouldSyncExecutionForTask,
-  taskTypeToExecutionType,
-  taskTypeToExpenseCategory,
-} from "@/lib/work-order-utils";
 import type {
   AppData,
   BonusPolicySettings,
@@ -78,36 +65,29 @@ import type {
   PostLinkOpinion,
   PostLinkOpinionInput,
   QaMessage,
+  QaMessageAttachment,
   QaThread,
   ExperienceCampaign,
+  ExperiencePartnerSlot,
+  ExperiencePartnerSlotInput,
+  ExperienceParticipationProposal,
+  ExperienceParticipationProposalInput,
   ExperienceParticipantInput,
   ExperienceParticipantUpdate,
   ExperienceScheduleProposalInput,
 } from "@/lib/types";
 import type { AuthSessionUser } from "@/lib/auth-utils";
-import { canUserRequestExpense } from "@/lib/expense-payout-utils";
-import {
-  applyRecontractAfterTermination,
-  applyRenewalSideEffects,
-  hasMaterialTermsChange,
-  termsChangeRecordNote,
-  type ContractTermsChangeMode,
-} from "@/lib/contract-terms-utils";
+import { findAuthMatchedUser } from "@/lib/auth-utils";
+import type { ContractTermsChangeMode } from "@/lib/contract-terms-utils";
 import { normalizeExpenseCategories } from "@/lib/expense-category-utils";
 import {
-  applyAcceptedProposal,
-  buildProposal,
-  createExperienceCampaignDraft,
-  createParticipantRecord,
   normalizeExperienceCampaigns,
-  normalizeExperienceParticipant,
 } from "@/lib/experience-campaign-utils";
 import { normalizePartnerFilters } from "@/lib/partner-filter-utils";
 import { normalizeExperienceFields } from "@/lib/experience-field-utils";
 import { normalizePartner, normalizePartners } from "@/lib/partner-utils";
 import {
   getContractTargetChannels,
-  getContractTargetCount,
   normalizeTaskChannels,
 } from "@/lib/task-channel-utils";
 import type {
@@ -121,11 +101,36 @@ import type {
   TaskChannelInput,
 } from "@/lib/types";
 import {
-  canCreateClientQaThread,
-  canReplyQa,
-} from "@/lib/place-qa-utils";
-
-const STORAGE_KEY = "tripit-erp-v15";
+  type LocationProfileInput,
+} from "@/lib/location-profile-utils";
+import {
+  normalizeContractClientLinks,
+  type ClientLinksInput,
+} from "@/lib/client-links-utils";
+import {
+  APP_STORAGE_KEY,
+  clearAppStorage,
+  loadAppData,
+  saveAppData,
+} from "@/lib/app-storage";
+import {
+  applyFullContractSync,
+  commitAppData,
+} from "@/core/domain/commit-app-data";
+import { newId } from "@/core/data/new-id";
+import { todayISO } from "@/core/data/date";
+import { createContractStore } from "@/features/contracts/create-contract-store";
+import { ContractStoreProvider } from "@/features/contracts/ContractStoreContext";
+import { createFinanceStore } from "@/features/finance/create-finance-store";
+import { FinanceStoreProvider } from "@/features/finance/FinanceStoreContext";
+import { createWorkOrderStore } from "@/features/work-orders/create-work-order-store";
+import { WorkOrderStoreProvider } from "@/features/work-orders/WorkOrderStoreContext";
+import { createBonusStore } from "@/features/bonus/create-bonus-store";
+import { BonusStoreProvider } from "@/features/bonus/BonusStoreContext";
+import { createQaStore } from "@/features/place-qa/create-qa-store";
+import { QaStoreProvider } from "@/features/place-qa/QaStoreContext";
+import { createExperienceStore } from "@/features/experience/create-experience-store";
+import { ExperienceStoreProvider } from "@/features/experience/ExperienceStoreContext";
 
 /** normalizeContract에서 매번 시드 전체를 만들지 않도록 고정 기본값 사용 */
 const DEFAULT_CONTRACT_START = "2026-06-01";
@@ -136,10 +141,6 @@ let seedFallbackCache: AppData | null = null;
 function getSeedFallback(): AppData {
   if (!seedFallbackCache) seedFallbackCache = createSeedData();
   return seedFallbackCache;
-}
-
-function newId(prefix: string) {
-  return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
 interface DataContextValue extends AppData {
@@ -170,8 +171,14 @@ interface DataContextValue extends AppData {
   addPartnerReferralLead: (input: PartnerReferralLeadInput) => PartnerReferralLead;
   updateWorkOrder: (id: string, input: Partial<WorkOrderInput>) => void;
   submitWorkOrder: (id: string, requestedBy: string) => boolean;
-  approveWorkOrder: (id: string, partnerUserId: string) => boolean;
+  approveWorkOrder: (
+    id: string,
+    partnerUserId: string,
+    approvalNote?: string,
+  ) => boolean;
   rejectWorkOrder: (id: string, reason: string) => void;
+  confirmWorkOrderByStaff: (id: string, staffUserId: string) => boolean;
+  rejectWorkOrderByStaff: (id: string, staffUserId: string, reason: string) => boolean;
   deliverWorkOrder: (
     id: string,
     postLinks: WorkOrder["postLinks"],
@@ -179,6 +186,14 @@ interface DataContextValue extends AppData {
   ) => boolean;
   confirmWorkOrderPayment: (id: string, paidBy: string) => boolean;
   ensureContractWorkOrders: (contractId: string) => void;
+  cancelWorkOrder: (id: string, reason?: string) => boolean;
+  holdWorkOrder: (id: string, reason?: string) => boolean;
+  postponeWorkOrder: (
+    id: string,
+    newDueDate: string,
+    reason?: string,
+  ) => boolean;
+  resumeWorkOrder: (id: string) => boolean;
   ensureContractExecutions: (contractId: string) => void;
   upsertAccountFromAuth: (auth: AuthSessionUser) => AccountProfile;
   approveAccountProfile: (
@@ -258,8 +273,14 @@ interface DataContextValue extends AppData {
     subject: string,
     body: string,
     userId: string,
+    attachments?: QaMessageAttachment[],
   ) => QaThread;
-  replyQaThread: (threadId: string, body: string, userId: string) => QaMessage;
+  replyQaThread: (
+    threadId: string,
+    body: string,
+    userId: string,
+    attachments?: QaMessageAttachment[],
+  ) => QaMessage;
   closeQaThread: (threadId: string, userId: string) => void;
   addPostLinkOpinion: (input: PostLinkOpinionInput) => PostLinkOpinion;
   addExperienceCampaign: (
@@ -306,10 +327,48 @@ interface DataContextValue extends AppData {
     participantId: string,
     input: ExperienceParticipantUpdate,
   ) => void;
+  updateContractLocation: (
+    contractId: string,
+    input: LocationProfileInput,
+  ) => void;
+  updateContractClientLinks: (
+    contractId: string,
+    input: ClientLinksInput,
+  ) => void;
+  updatePartnerLocation: (partnerId: string, input: LocationProfileInput) => void;
+  publishExperiencePartnerSlot: (
+    input: ExperiencePartnerSlotInput,
+  ) => ExperiencePartnerSlot;
+  claimExperiencePartnerSlot: (
+    slotId: string,
+    partnerId: string,
+    userId: string,
+    claimNote?: string,
+  ) => boolean;
+  cancelExperiencePartnerSlot: (slotId: string) => void;
+  submitExperienceParticipationProposal: (
+    input: ExperienceParticipationProposalInput,
+  ) => ExperienceParticipationProposal | null;
+  acceptExperienceParticipationProposal: (
+    proposalId: string,
+    staffUserId: string,
+    reviewNote?: string,
+  ) => boolean;
+  rejectExperienceParticipationProposal: (
+    proposalId: string,
+    staffUserId: string,
+    reviewNote?: string,
+  ) => boolean;
   addContractMemo: (contractId: string, body: string, authorUserId: string) => ContractMemo | null;
   deleteContractMemo: (id: string) => void;
   upsertWorkEvaluation: (input: WorkEvaluationInput) => void;
-  resetData: () => void;
+  /** 고객사 포털 — 해야 할 일 확인(목록·뱃지에서 제외) */
+  dismissClientPortalAction: (
+    contractId: string,
+    userId: string,
+    actionId: string,
+  ) => void;
+  resetData: (options?: { reload?: boolean }) => void;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -323,10 +382,6 @@ function normalizeExecution(execution: Execution): Execution {
     ),
     memo: execution.memo ?? "",
   };
-}
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function normalizeContract(contract: Contract): Contract {
@@ -344,6 +399,7 @@ function normalizeContract(contract: Contract): Contract {
       contract.lastClientDepositDate ??
       (contract.status === "active" ? start : undefined),
     clientDepositStatus: contract.clientDepositStatus,
+    ...normalizeContractClientLinks(contract),
   };
 }
 
@@ -381,79 +437,135 @@ function normalizeExpense(expense: Expense, index: number): Expense {
   };
 }
 
+function ensureDemoClientPortalData(data: AppData): AppData {
+  const seed = getSeedFallback();
+  let users = [...data.users];
+  let accountProfiles = [...(data.accountProfiles ?? [])];
+
+  // 데모 고객사 계정 — 이름·계약 연결이 localStorage에서 틀어져도 시드 기준으로 복구
+  for (const seedUser of seed.users.filter((u) => u.role === "client")) {
+    const idx = users.findIndex(
+      (u) =>
+        u.id === seedUser.id ||
+        (seedUser.googleId && u.googleId === seedUser.googleId),
+    );
+    if (idx === -1) {
+      users.push(seedUser);
+      continue;
+    }
+    users[idx] = {
+      ...users[idx],
+      name: seedUser.name,
+      role: "client",
+      contractId: seedUser.contractId,
+      email: seedUser.email ?? users[idx].email,
+      googleId: seedUser.googleId ?? users[idx].googleId,
+      isFinancialViewer: false,
+    };
+  }
+
+  for (const seedProfile of seed.accountProfiles.filter(
+    (p) => p.role === "client" && p.status === "approved",
+  )) {
+    const existing = accountProfiles.find(
+      (p) =>
+        p.googleId === seedProfile.googleId ||
+        p.linkedUserId === seedProfile.linkedUserId ||
+        (seedProfile.email && p.email === seedProfile.email),
+    );
+    if (!existing) {
+      accountProfiles.push(seedProfile);
+      continue;
+    }
+    accountProfiles = accountProfiles.map((p) =>
+      p.id === existing.id
+        ? {
+            ...p,
+            name: seedProfile.name,
+            role: "client",
+            linkedUserId: seedProfile.linkedUserId,
+            contractId: seedProfile.contractId,
+            email: seedProfile.email ?? p.email,
+            googleId: seedProfile.googleId ?? p.googleId,
+            status: "approved",
+          }
+        : p,
+    );
+  }
+
+  return { ...data, users, accountProfiles };
+}
+
 function normalizeAppData(data: AppData): AppData {
   const seed = getSeedFallback();
-  const contracts = data.contracts.map(normalizeContract);
-  const bonusPolicy = data.bonusPolicy ?? seed.bonusPolicy;
-  const teams = data.teams ?? seed.teams;
-  return {
-    ...data,
+  const withClients = ensureDemoClientPortalData(data);
+  const contracts = withClients.contracts.map(normalizeContract);
+  const bonusPolicy = withClients.bonusPolicy ?? seed.bonusPolicy;
+  const teams = withClients.teams ?? seed.teams;
+  const normalized: AppData = {
+    ...withClients,
     contracts,
-    executions: data.executions.map(normalizeExecution),
-    expenses: (data.expenses ?? seed.expenses).map((e, i) =>
+    executions: withClients.executions.map(normalizeExecution),
+    expenses: (withClients.expenses ?? seed.expenses).map((e, i) =>
       normalizeExpense(e, i),
     ),
-    bonusPayments: (data.bonusPayments ?? seed.bonusPayments).map((p) =>
+    bonusPayments: (withClients.bonusPayments ?? seed.bonusPayments).map((p) =>
       normalizeBonusPayment(
         p,
         contracts,
         bonusPolicy,
         teams,
-        data.users ?? seed.users,
+        withClients.users ?? seed.users,
       ),
     ),
-    fundBudget: data.fundBudget ?? seed.fundBudget,
-    contractRecords: data.contractRecords ?? seed.contractRecords,
-    contractMemos: data.contractMemos ?? seed.contractMemos ?? [],
+    fundBudget: withClients.fundBudget ?? seed.fundBudget,
+    contractRecords: withClients.contractRecords ?? seed.contractRecords,
+    contractMemos: withClients.contractMemos ?? seed.contractMemos ?? [],
     bonusPolicy,
-    partners: normalizePartners(data.partners ?? seed.partners),
-    workOrders: data.workOrders ?? seed.workOrders,
-    accountProfiles: data.accountProfiles ?? seed.accountProfiles,
-    taskChannels: normalizeTaskChannels(data.taskChannels ?? seed.taskChannels),
+    partners: normalizePartners(withClients.partners ?? seed.partners),
+    workOrders: withClients.workOrders ?? seed.workOrders,
+    taskChannels: normalizeTaskChannels(withClients.taskChannels ?? seed.taskChannels),
     expenseCategories: normalizeExpenseCategories(
-      data.expenseCategories ?? seed.expenseCategories,
+      withClients.expenseCategories ?? seed.expenseCategories,
     ),
     partnerFilterDefinitions: normalizePartnerFilters(
-      data.partnerFilterDefinitions ?? seed.partnerFilterDefinitions,
+      withClients.partnerFilterDefinitions ?? seed.partnerFilterDefinitions,
     ),
     experienceFieldDefinitions: normalizeExperienceFields(
-      data.experienceFieldDefinitions ?? seed.experienceFieldDefinitions,
+      withClients.experienceFieldDefinitions ?? seed.experienceFieldDefinitions,
     ),
-    placeCredentials: data.placeCredentials ?? seed.placeCredentials ?? [],
-    qaThreads: data.qaThreads ?? seed.qaThreads ?? [],
-    qaMessages: data.qaMessages ?? seed.qaMessages ?? [],
-    postLinkOpinions: data.postLinkOpinions ?? seed.postLinkOpinions ?? [],
+    placeCredentials: withClients.placeCredentials ?? seed.placeCredentials ?? [],
+    qaThreads: withClients.qaThreads ?? seed.qaThreads ?? [],
+    qaMessages: withClients.qaMessages ?? seed.qaMessages ?? [],
+    postLinkOpinions: withClients.postLinkOpinions ?? seed.postLinkOpinions ?? [],
     partnerReferralLeads:
-      data.partnerReferralLeads ?? seed.partnerReferralLeads ?? [],
+      withClients.partnerReferralLeads ?? seed.partnerReferralLeads ?? [],
     experienceCampaigns: normalizeExperienceCampaigns(
-      data.experienceCampaigns ?? seed.experienceCampaigns ?? [],
+      withClients.experienceCampaigns ?? seed.experienceCampaigns ?? [],
     ),
-    workEvaluations: data.workEvaluations ?? seed.workEvaluations ?? [],
+    experiencePartnerSlots:
+      withClients.experiencePartnerSlots ?? seed.experiencePartnerSlots ?? [],
+    experienceParticipationProposals:
+      withClients.experienceParticipationProposals ??
+      seed.experienceParticipationProposals ??
+      [],
+    workEvaluations: withClients.workEvaluations ?? seed.workEvaluations ?? [],
+    clientPortalActionDismissals:
+      withClients.clientPortalActionDismissals ??
+      seed.clientPortalActionDismissals ??
+      [],
   };
+  return applyJejuOseongOperationalSample(normalized);
 }
 
-function loadStoredDataRaw(): AppData | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as AppData;
-  } catch {
-    return null;
-  }
-}
+/** persist·hydrate 시 계약 진행률·execution 자동 동기화 파이프라인 */
+const dataSyncPipeline = {
+  normalize: normalizeAppData,
+  newExecutionId: () => newId("ex"),
+};
 
 function applyContractSync(data: AppData): AppData {
-  const withProgress = {
-    ...data,
-    contracts: syncAllContractProgress(data),
-  };
-  return normalizeAppData({
-    ...withProgress,
-    executions: ensureAllContractExecutions(withProgress, () =>
-      newId("ex"),
-    ),
-  });
+  return applyFullContractSync(data, dataSyncPipeline);
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
@@ -463,34 +575,35 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    try {
-      const stored = loadStoredDataRaw();
-      if (stored) {
-        // 1) 저장 데이터를 먼저 표시 → 로딩 즉시 해제
-        setData(stored);
-        setHydrated(true);
+    void (async () => {
+      try {
+        const stored = await loadAppData();
+        if (cancelled) return;
 
-        // 2) 무거운 정규화·동기화는 다음 틱에 처리
-        window.setTimeout(() => {
-          if (cancelled) return;
-          try {
-            setData((prev) => applyContractSync(normalizeAppData(prev)));
-          } catch (err) {
-            console.error("데이터 정규화 실패", err);
-          }
-        }, 0);
-        return () => {
-          cancelled = true;
-        };
+        if (stored) {
+          setData(stored);
+          setHydrated(true);
+
+          window.setTimeout(() => {
+            if (cancelled) return;
+            try {
+              setData((prev) => applyContractSync(prev));
+            } catch (err) {
+              console.error("데이터 정규화 실패", err);
+            }
+          }, 0);
+          return;
+        }
+
+        setData(getSeedFallback());
+      } catch (err) {
+        console.error("데이터 로드 실패, 시드로 초기화합니다.", err);
+        setData(getSeedFallback());
       }
 
-      setData(getSeedFallback());
-    } catch (err) {
-      console.error("데이터 로드 실패, 시드로 초기화합니다.", err);
-      setData(getSeedFallback());
-    }
+      if (!cancelled) setHydrated(true);
+    })();
 
-    setHydrated(true);
     return () => {
       cancelled = true;
     };
@@ -499,371 +612,141 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!hydrated) return;
     const timer = window.setTimeout(() => {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      } catch (err) {
-        console.error("localStorage 저장 실패", err);
+      const save = () => {
+        void saveAppData(data).then((result) => {
+          if (!result.ok && result.reason === "quota") {
+            console.warn(
+              `localStorage 용량(${APP_STORAGE_KEY})이 부족해 저장을 건너뜁니다. 설정에서 데이터 초기화하거나 브라우저 저장소를 비워 주세요.`,
+            );
+          }
+        });
+      };
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(save, { timeout: 2500 });
+      } else {
+        save();
       }
-    }, 400);
+    }, 1200);
     return () => window.clearTimeout(timer);
   }, [data, hydrated]);
 
   const persist = useCallback((updater: (prev: AppData) => AppData) => {
-    setData((prev) => applyContractSync(updater(prev)));
+    setData((prev) => commitAppData(prev, updater(prev), dataSyncPipeline));
   }, []);
 
-  const addContract = useCallback(
-    (input: ContractInput) => {
-      const contract: Contract = { ...input, id: newId("c") };
-      const period = (contract.contractStartDate || todayISO()).slice(0, 7);
-      const record: ContractRecord = {
-        id: newId("cr"),
-        contractId: contract.id,
-        period,
-        assignedStaffId: contract.assignedStaffId,
-        teamId: contract.teamId,
-        startedAt: contract.contractStartDate || todayISO(),
-        monthlyFee: contract.monthlyFee,
-        isExtension: contract.isExtension,
-        note: "신규 계약",
-      };
-      persist((prev) => ({
-        ...prev,
-        contracts: [...prev.contracts, contract],
-        contractRecords: [...prev.contractRecords, record],
-        executions: ensureExecutionsForContract(
-          contract,
-          prev.executions,
-          prev.taskChannels,
-          () => newId("ex"),
-        ),
-      }));
-      return contract;
-    },
+  const storeDeps = useMemo(
+    () => ({ persist, newId, todayISO }),
     [persist],
   );
-
-  const updateContract = useCallback(
-    (id: string, input: Partial<ContractInput>, options?: { mode?: ContractTermsChangeMode }) => {
-      const mode = options?.mode ?? "amend";
-      persist((prev) => {
-        const old = prev.contracts.find((c) => c.id === id);
-        let contractRecords = prev.contractRecords;
-        const now = todayISO();
-
-        let patch: Partial<ContractInput> = { ...input };
-        if (mode === "recontract") {
-          if (!old || old.status !== "terminated") return prev;
-          patch = applyRecontractAfterTermination(old, patch);
-        } else if (mode === "renewal" && old) {
-          patch = applyRenewalSideEffects(old, patch);
-        }
-
-        if (
-          old &&
-          patch.assignedStaffId &&
-          patch.assignedStaffId !== old.assignedStaffId
-        ) {
-          contractRecords = contractRecords.map((r) =>
-            r.contractId === id && !r.endedAt ? { ...r, endedAt: now } : r,
-          );
-          contractRecords = [
-            ...contractRecords,
-            {
-              id: newId("cr"),
-              contractId: id,
-              period: now.slice(0, 7),
-              assignedStaffId: patch.assignedStaffId,
-              teamId: patch.teamId ?? old.teamId,
-              startedAt: now,
-              monthlyFee: patch.monthlyFee ?? old.monthlyFee,
-              isExtension: patch.isExtension ?? old.isExtension,
-              note: "담당자 변경",
-            },
-          ];
-        }
-
-        const merged = old ? { ...old, ...patch } : undefined;
-
-        if (old && merged) {
-          if (mode === "renewal") {
-            contractRecords = contractRecords.map((r) =>
-              r.contractId === id && !r.endedAt ? { ...r, endedAt: now } : r,
-            );
-            contractRecords = [
-              ...contractRecords,
-              {
-                id: newId("cr"),
-                contractId: id,
-                period: (patch.contractStartDate ?? now).slice(0, 7),
-                assignedStaffId: merged.assignedStaffId,
-                teamId: merged.teamId,
-                startedAt: patch.contractStartDate ?? now,
-                monthlyFee: merged.monthlyFee,
-                isExtension: merged.isExtension,
-                note: termsChangeRecordNote(mode, merged.renewalMonthCount),
-              },
-            ];
-          } else if (mode === "recontract") {
-            contractRecords = [
-              ...contractRecords,
-              {
-                id: newId("cr"),
-                contractId: id,
-                period: (patch.contractStartDate ?? now).slice(0, 7),
-                assignedStaffId: merged.assignedStaffId,
-                teamId: merged.teamId,
-                startedAt: patch.contractStartDate ?? now,
-                monthlyFee: merged.monthlyFee,
-                isExtension: false,
-                note: termsChangeRecordNote(mode, merged.renewalMonthCount),
-              },
-            ];
-          } else if (
-            hasMaterialTermsChange(old, merged, prev.taskChannels) &&
-            !(
-              patch.assignedStaffId &&
-              patch.assignedStaffId !== old.assignedStaffId &&
-              old.monthlyFee === merged.monthlyFee &&
-              old.contractStartDate === merged.contractStartDate &&
-              old.contractEndDate === merged.contractEndDate &&
-              old.hasPlaceSetting === merged.hasPlaceSetting &&
-              !getContractTargetChannels(prev.taskChannels).some(
-                (ch) =>
-                  getContractTargetCount(old, ch) !==
-                  getContractTargetCount(merged, ch),
-              )
-            )
-          ) {
-            contractRecords = [
-              ...contractRecords,
-              {
-                id: newId("cr"),
-                contractId: id,
-                period: now.slice(0, 7),
-                assignedStaffId: merged.assignedStaffId,
-                teamId: merged.teamId,
-                startedAt: now,
-                monthlyFee: merged.monthlyFee,
-                isExtension: merged.isExtension,
-                note: termsChangeRecordNote(mode, merged.renewalMonthCount),
-              },
-            ];
-          }
-        }
-
-        return {
-          ...prev,
-          contractRecords,
-          ...(mode === "recontract"
-            ? {
-                extensionApprovals: prev.extensionApprovals.filter(
-                  (a) => !(a.contractId === id && a.status === "pending"),
-                ),
-              }
-            : {}),
-          contracts: prev.contracts.map((c) =>
-            c.id === id ? { ...c, ...patch } : c,
-          ),
-          ...(() => {
-            const updated = prev.contracts.find((c) => c.id === id);
-            if (!updated) return {};
-            const mergedContract = { ...updated, ...patch };
-            let workOrders = prev.workOrders;
-            let executions = ensureExecutionsForContract(
-              mergedContract,
-              prev.executions,
-              prev.taskChannels,
-              () => newId("ex"),
-            );
-
-            const targetsChanged =
-              old &&
-              getContractTargetChannels(prev.taskChannels).some(
-                (ch) =>
-                  getContractTargetCount(old, ch) !==
-                  getContractTargetCount(mergedContract, ch),
-              );
-
-            if (
-              patch.referrerPartnerId !== undefined ||
-              patch.hasReferralPromo !== undefined ||
-              patch.monthlyFee !== undefined
-            ) {
-              workOrders = workOrders.map((w) => {
-                if (w.contractId !== id || w.taskType !== "referral") return w;
-                if (!["draft", "rejected"].includes(w.stage)) return w;
-                return {
-                  ...w,
-                  partnerId: mergedContract.referrerPartnerId ?? w.partnerId,
-                  costLines:
-                    patch.monthlyFee !== undefined
-                      ? buildReferralCostLines(mergedContract.monthlyFee)
-                      : w.costLines,
-                };
-              });
-            }
-
-            if (mergedContract.hasReferralPromo && mergedContract.status === "active") {
-              const generated = generateWorkOrdersForContract(
-                mergedContract,
-                workOrders,
-                prev.taskChannels,
-              );
-              if (generated.length > 0) {
-                workOrders = [
-                  ...workOrders,
-                  ...generated.map((g) => ({ ...g, id: newId("wo") })),
-                ];
-              }
-            }
-
-            if (mergedContract.hasReferralPromo === false) {
-              workOrders = workOrders.filter(
-                (w) =>
-                  !(
-                    w.contractId === id &&
-                    w.taskType === "referral" &&
-                    ["draft", "rejected"].includes(w.stage)
-                  ),
-              );
-            }
-
-            if (targetsChanged || mode === "renewal" || mode === "recontract") {
-              const generated = generateWorkOrdersForContract(
-                mergedContract,
-                workOrders,
-                prev.taskChannels,
-              );
-              if (generated.length > 0) {
-                workOrders = [
-                  ...workOrders,
-                  ...generated.map((g) => ({ ...g, id: newId("wo") })),
-                ];
-              }
-            }
-
-            return { workOrders, executions };
-          })(),
-        };
-      });
-    },
-    [persist],
+  const contractStore = useMemo(
+    () => createContractStore(storeDeps),
+    [storeDeps],
+  );
+  const financeStore = useMemo(
+    () => createFinanceStore(storeDeps),
+    [storeDeps],
+  );
+  const workOrderStore = useMemo(
+    () => createWorkOrderStore(storeDeps),
+    [storeDeps],
+  );
+  const bonusStore = useMemo(
+    () => createBonusStore(storeDeps),
+    [storeDeps],
+  );
+  const qaStore = useMemo(
+    () => createQaStore(storeDeps),
+    [storeDeps],
+  );
+  const experienceStore = useMemo(
+    () => createExperienceStore(storeDeps),
+    [storeDeps],
   );
 
-  const deleteContract = useCallback(
-    (id: string) => {
-      persist((prev) => ({
-        ...prev,
-        contracts: prev.contracts.filter((c) => c.id !== id),
-        executions: prev.executions.filter((e) => e.contractId !== id),
-        expenses: prev.expenses.filter((e) => e.contractId !== id),
-        extensionApprovals: prev.extensionApprovals.filter(
-          (a) => a.contractId !== id,
-        ),
-        contractRecords: prev.contractRecords.filter(
-          (r) => r.contractId !== id,
-        ),
-        contractMemos: (prev.contractMemos ?? []).filter(
-          (m) => m.contractId !== id,
-        ),
-        workOrders: prev.workOrders.filter((w) => w.contractId !== id),
-        placeCredentials: prev.placeCredentials.filter(
-          (p) => p.contractId !== id,
-        ),
-        qaThreads: prev.qaThreads.filter((t) => t.contractId !== id),
-        qaMessages: prev.qaMessages.filter(
-          (m) =>
-            !prev.qaThreads.some(
-              (t) => t.contractId === id && t.id === m.threadId,
-            ),
-        ),
-        postLinkOpinions: (prev.postLinkOpinions ?? []).filter(
-          (o) => o.contractId !== id,
-        ),
-      }));
-    },
-    [persist],
-  );
+  const {
+    addContract,
+    updateContract,
+    deleteContract,
+    terminateContract,
+    requestExtension,
+    approveExtension,
+    rejectExtension,
+    addExecution,
+    updateExecution,
+    deleteExecution,
+    addContractMemo,
+    deleteContractMemo,
+    updateContractLocation,
+    updateContractClientLinks,
+  } = contractStore;
 
-  const addExecution = useCallback(
-    (input: ExecutionInput) => {
-      const execution: Execution = { ...input, id: newId("ex") };
-      persist((prev) => ({
-        ...prev,
-        executions: [...prev.executions, execution],
-      }));
-      return execution;
-    },
-    [persist],
-  );
+  const {
+    addExpense,
+    updateExpense,
+    deleteExpense,
+    requestExpensePayout,
+    approveExpensePayout,
+    rejectExpensePayout,
+    markExpensesPaid,
+    updateFundBudget,
+    updateClientDepositStatus,
+  } = financeStore;
 
-  const updateExecution = useCallback(
-    (id: string, input: Partial<ExecutionInput>) => {
-      persist((prev) => {
-        const updated = prev.executions.map((e) =>
-          e.id === id ? { ...e, ...input } : e,
-        );
-        const exec = updated.find((e) => e.id === id);
-        if (!exec) return { ...prev, executions: updated };
+  const {
+    updateWorkOrder,
+    submitWorkOrder,
+    approveWorkOrder,
+    rejectWorkOrder,
+    confirmWorkOrderByStaff,
+    rejectWorkOrderByStaff,
+    deliverWorkOrder,
+    confirmWorkOrderPayment,
+    ensureContractWorkOrders,
+    cancelWorkOrder,
+    holdWorkOrder,
+    postponeWorkOrder,
+    resumeWorkOrder,
+  } = workOrderStore;
 
-        const contracts = prev.contracts.map((c) => {
-          if (c.id !== exec.contractId) return c;
-          if (exec.type === "optimized") {
-            return { ...c, optimizedDone: exec.completedCount };
-          }
-          if (exec.type === "influencer") {
-            return { ...c, influencerDone: exec.completedCount };
-          }
-          return c;
-        });
+  const {
+    approveBonusTeamLeader,
+    approveBonusExecutive,
+    approveBonusCeo,
+    rejectBonus,
+    payBonus,
+    setExecutiveBonusLimit,
+    setTeamLeaderBonusLimit,
+    setStaffBonusPercent,
+    requestBonusPayment,
+  } = bonusStore;
 
-        return { ...prev, executions: updated, contracts };
-      });
-    },
-    [persist],
-  );
+  const {
+    upsertPlaceCredentials,
+    createQaThread,
+    replyQaThread,
+    closeQaThread,
+    addPostLinkOpinion,
+  } = qaStore;
 
-  const deleteExecution = useCallback(
-    (id: string) => {
-      persist((prev) => ({
-        ...prev,
-        executions: prev.executions.filter((e) => e.id !== id),
-      }));
-    },
-    [persist],
-  );
-
-  const addExpense = useCallback(
-    (input: ExpenseInput) => {
-      const expense: Expense = { ...input, id: newId("e") };
-      persist((prev) => ({ ...prev, expenses: [...prev.expenses, expense] }));
-      return expense;
-    },
-    [persist],
-  );
-
-  const updateExpense = useCallback(
-    (id: string, input: Partial<ExpenseInput>) => {
-      persist((prev) => ({
-        ...prev,
-        expenses: prev.expenses.map((e) =>
-          e.id === id ? { ...e, ...input } : e,
-        ),
-      }));
-    },
-    [persist],
-  );
-
-  const deleteExpense = useCallback(
-    (id: string) => {
-      persist((prev) => ({
-        ...prev,
-        expenses: prev.expenses.filter((e) => e.id !== id),
-      }));
-    },
-    [persist],
-  );
+  const {
+    addExperienceFieldDefinition,
+    updateExperienceFieldDefinition,
+    deleteExperienceFieldDefinition,
+    addExperienceCampaign,
+    updateExperienceCampaign,
+    sendExperienceCampaignToClient,
+    proposeExperienceSchedule,
+    acceptExperienceProposal,
+    addExperienceParticipant,
+    removeExperienceParticipant,
+    updateExperienceParticipant,
+    publishExperiencePartnerSlot,
+    claimExperiencePartnerSlot,
+    cancelExperiencePartnerSlot,
+    submitExperienceParticipationProposal,
+    acceptExperienceParticipationProposal,
+    rejectExperienceParticipationProposal,
+  } = experienceStore;
 
   const syncClientAccountProfile = (
     accountProfiles: AccountProfile[],
@@ -891,8 +774,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       linkedUserId: user.id,
       contractId: user.contractId,
       isFinancialViewer: false,
-      requestedAt: existing?.requestedAt ?? today(),
-      approvedAt: existing?.approvedAt ?? today(),
+      requestedAt: existing?.requestedAt ?? todayISO(),
+      approvedAt: existing?.approvedAt ?? todayISO(),
     };
 
     if (existing) {
@@ -1055,301 +938,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [persist],
   );
 
-  const updateWorkOrder = useCallback(
-    (id: string, input: Partial<WorkOrderInput>) => {
-      persist((prev) => ({
-        ...prev,
-        workOrders: prev.workOrders.map((w) => {
-          if (w.id !== id) return w;
-          if (!["draft", "rejected"].includes(w.stage)) return w;
-          return { ...w, ...input };
-        }),
-      }));
-    },
-    [persist],
-  );
-
-  const submitWorkOrder = useCallback(
-    (id: string, requestedBy: string): boolean => {
-      let ok = false;
-      persist((prev) => {
-        const order = prev.workOrders.find((w) => w.id === id);
-        if (
-          !order ||
-          !["draft", "rejected"].includes(order.stage) ||
-          !order.partnerId ||
-          calcWorkOrderTotal(order.costLines) <= 0
-        ) {
-          return prev;
-        }
-        ok = true;
-        return {
-          ...prev,
-          workOrders: prev.workOrders.map((w) =>
-            w.id === id
-              ? {
-                  ...w,
-                  stage: "pending_approval" as const,
-                  requestedBy,
-                  requestedAt: today(),
-                  rejectedReason: undefined,
-                }
-              : w,
-          ),
-        };
-      });
-      return ok;
-    },
-    [persist],
-  );
-
-  const approveWorkOrder = useCallback(
-    (id: string, partnerUserId: string): boolean => {
-      let ok = false;
-      persist((prev) => {
-        const order = prev.workOrders.find((w) => w.id === id);
-        if (!order || order.stage !== "pending_approval") return prev;
-        ok = true;
-        return {
-          ...prev,
-          workOrders: prev.workOrders.map((w) =>
-            w.id === id
-              ? {
-                  ...w,
-                  stage: "approved" as const,
-                  approvedBy: partnerUserId,
-                  approvedAt: today(),
-                }
-              : w,
-          ),
-        };
-      });
-      return ok;
-    },
-    [persist],
-  );
-
-  const rejectWorkOrder = useCallback(
-    (id: string, reason: string) => {
-      persist((prev) => ({
-        ...prev,
-        workOrders: prev.workOrders.map((w) =>
-          w.id === id && w.stage === "pending_approval"
-            ? {
-                ...w,
-                stage: "rejected" as const,
-                rejectedReason: reason || "파트너 반려",
-              }
-            : w,
-        ),
-      }));
-    },
-    [persist],
-  );
-
-  const deliverWorkOrder = useCallback(
-    (id: string, postLinks: WorkOrder["postLinks"], memo: string): boolean => {
-      let ok = false;
-      persist((prev) => {
-        const order = prev.workOrders.find((w) => w.id === id);
-        if (!order || order.stage !== "approved") return prev;
-        const links = getValidPostLinks(postLinks);
-        if (links.length === 0 && !memo.trim()) return prev;
-        ok = true;
-        return {
-          ...prev,
-          workOrders: prev.workOrders.map((w) =>
-            w.id === id
-              ? {
-                  ...w,
-                  stage: "delivered" as const,
-                  postLinks: links,
-                  memo,
-                  deliveredAt: today(),
-                }
-              : w,
-          ),
-        };
-      });
-      return ok;
-    },
-    [persist],
-  );
-
-  const confirmWorkOrderPayment = useCallback(
-    (id: string, paidBy: string): boolean => {
-      let ok = false;
-      persist((prev) => {
-        const order = prev.workOrders.find((w) => w.id === id);
-        if (!order || order.stage !== "delivered") return prev;
-        const partner = prev.partners.find((p) => p.id === order.partnerId);
-        const total = calcWorkOrderTotal(order.costLines);
-        if (total <= 0) return prev;
-
-        const expenseId = newId("e");
-        const expense = {
-          id: expenseId,
-          contractId: order.contractId,
-          category: taskTypeToExpenseCategory(order.taskType, prev.taskChannels),
-          description: buildExpenseDescription(order, prev.taskChannels),
-          amount: total,
-          bankAccount: partner?.bankAccount ?? "",
-          accountHolder: partner?.accountHolder ?? "",
-          partnerId: order.partnerId,
-          paymentDueDate: order.dueDate,
-          payoutStatus: "paid" as const,
-        };
-
-        const execType = taskTypeToExecutionType(order.taskType, prev.taskChannels);
-        let executionId = order.executionId;
-        let executions = [...prev.executions];
-
-        if (shouldSyncExecutionForTask(order.taskType, prev.taskChannels)) {
-          const existing = findExecutionForWorkOrder(
-            executions,
-            order.contractId,
-            order.taskType,
-            prev.taskChannels,
-          );
-
-          if (existing) {
-            const mergedLinks = [
-              ...existing.postLinks,
-              ...order.postLinks.filter(
-                (l) => !existing.postLinks.some((p) => p.url === l.url),
-              ),
-            ];
-            const completedCount = Math.min(
-              existing.targetCount,
-              existing.completedCount + 1,
-            );
-            executionId = existing.id;
-            executions = executions.map((e) =>
-              e.id === existing.id
-                ? {
-                    ...e,
-                    postLinks: mergedLinks,
-                    completedCount,
-                    status:
-                      completedCount >= e.targetCount
-                        ? ("completed" as const)
-                        : ("in_progress" as const),
-                    completedDate:
-                      completedCount >= e.targetCount
-                        ? today()
-                        : e.completedDate,
-                  }
-                : e,
-            );
-          } else {
-            const contract = prev.contracts.find((c) => c.id === order.contractId);
-            const channel = prev.taskChannels.find((c) => c.id === order.taskType);
-            const targetCount =
-              contract && channel
-                ? getContractTargetCount(contract, channel) || 1
-                : 1;
-            const newExec = {
-              id: newId("ex"),
-              contractId: order.contractId,
-              type: execType,
-              taskChannelId: order.taskType,
-              status: "in_progress" as const,
-              completedCount: 1,
-              targetCount,
-              dueDate: order.dueDate,
-              memo: order.memo ?? "",
-              postLinks: order.postLinks,
-              enteredAt: today(),
-            };
-            executionId = newExec.id;
-            executions.push(newExec);
-          }
-        }
-
-        const contracts = shouldSyncExecutionForTask(
-          order.taskType,
-          prev.taskChannels,
-        )
-          ? prev.contracts.map((c) => {
-              if (c.id !== order.contractId) return c;
-              const channel = prev.taskChannels.find(
-                (ch) => ch.id === order.taskType,
-              );
-              if (channel?.contractDoneField) {
-                const field = channel.contractDoneField;
-                const target = getContractTargetCount(c, channel);
-                return {
-                  ...c,
-                  [field]: Math.min(target, (c[field] ?? 0) + 1),
-                };
-              }
-              if (execType === "optimized") {
-                return {
-                  ...c,
-                  optimizedDone: Math.min(c.targetOptimized, c.optimizedDone + 1),
-                };
-              }
-              if (execType === "influencer") {
-                return {
-                  ...c,
-                  influencerDone: Math.min(
-                    c.targetInfluencer,
-                    c.influencerDone + 1,
-                  ),
-                };
-              }
-              return c;
-            })
-          : prev.contracts;
-
-        ok = true;
-        return {
-          ...prev,
-          expenses: [...prev.expenses, expense],
-          executions,
-          contracts,
-          workOrders: prev.workOrders.map((w) =>
-            w.id === id
-              ? {
-                  ...w,
-                  stage: "order_ready" as const,
-                  paidAt: today(),
-                  paidBy,
-                  expenseId,
-                  executionId,
-                }
-              : w,
-          ),
-        };
-      });
-      return ok;
-    },
-    [persist],
-  );
-
-  const ensureContractWorkOrders = useCallback(
-    (contractId: string) => {
-      persist((prev) => {
-        const contract = prev.contracts.find((c) => c.id === contractId);
-        if (!contract || contract.status !== "active") return prev;
-        const generated = generateWorkOrdersForContract(
-          contract,
-          prev.workOrders,
-          prev.taskChannels,
-        );
-        if (generated.length === 0) return prev;
-        return {
-          ...prev,
-          workOrders: [
-            ...prev.workOrders,
-            ...generated.map((g) => ({ ...g, id: newId("wo") })),
-          ],
-        };
-      });
-    },
-    [persist],
-  );
-
   const ensureContractExecutions = useCallback(
     (contractId: string) => {
       persist((prev) => {
@@ -1378,24 +966,84 @@ export function DataProvider({ children }: { children: ReactNode }) {
     (auth: AuthSessionUser): AccountProfile => {
       let profile!: AccountProfile;
       persist((prev) => {
-        const existing = prev.accountProfiles.find(
-          (p) => p.googleId === auth.googleId || p.email === auth.email,
+        const base = ensureDemoClientPortalData(prev);
+        const matchedUser = findAuthMatchedUser(auth, base.users);
+        const existing = base.accountProfiles.find(
+          (p) =>
+            p.googleId === auth.googleId ||
+            (auth.email && p.email === auth.email),
         );
+
+        let users = base.users;
+        if (
+          matchedUser &&
+          !users.some((user) => user.id === matchedUser.id)
+        ) {
+          users = [...users, matchedUser];
+        }
+
         if (existing) {
+          const shouldAutoApprove =
+            existing.status === "pending" && Boolean(matchedUser);
           profile = {
             ...existing,
             googleId: auth.googleId,
             email: auth.email,
-            name: auth.name,
+            name: matchedUser?.name ?? auth.name,
             avatarUrl: auth.avatarUrl ?? existing.avatarUrl,
+            linkedUserId: matchedUser?.id ?? existing.linkedUserId,
+            role: matchedUser?.role ?? existing.role,
+            contractId: matchedUser?.contractId ?? existing.contractId,
+            partnerId: matchedUser?.partnerId ?? existing.partnerId,
+            teamId: matchedUser?.teamId ?? existing.teamId,
+            status: shouldAutoApprove ? "approved" : existing.status,
+            ...(shouldAutoApprove && matchedUser
+              ? { approvedAt: todayISO(), role: matchedUser.role }
+              : {}),
           };
+          if (matchedUser) {
+            profile = {
+              ...profile,
+              linkedUserId: matchedUser.id,
+              role: matchedUser.role,
+              contractId: matchedUser.contractId,
+              partnerId: matchedUser.partnerId,
+              teamId: matchedUser.teamId,
+            };
+          }
           return {
-            ...prev,
-            accountProfiles: prev.accountProfiles.map((p) =>
+            ...base,
+            users,
+            accountProfiles: base.accountProfiles.map((p) =>
               p.id === existing.id ? profile : p,
             ),
           };
         }
+
+        if (matchedUser) {
+          profile = {
+            id: newId("ap"),
+            googleId: auth.googleId,
+            email: auth.email,
+            name: matchedUser.name,
+            avatarUrl: auth.avatarUrl,
+            status: "approved",
+            role: matchedUser.role,
+            linkedUserId: matchedUser.id,
+            teamId: matchedUser.teamId,
+            partnerId: matchedUser.partnerId,
+            contractId: matchedUser.contractId,
+            isFinancialViewer: matchedUser.isFinancialViewer,
+            requestedAt: todayISO(),
+            approvedAt: todayISO(),
+          };
+          return {
+            ...base,
+            users,
+            accountProfiles: [...base.accountProfiles, profile],
+          };
+        }
+
         profile = {
           id: newId("ap"),
           googleId: auth.googleId,
@@ -1403,11 +1051,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
           name: auth.name,
           avatarUrl: auth.avatarUrl,
           status: "pending",
-          requestedAt: today(),
+          requestedAt: todayISO(),
         };
         return {
-          ...prev,
-          accountProfiles: [...prev.accountProfiles, profile],
+          ...base,
+          accountProfiles: [...base.accountProfiles, profile],
         };
       });
       return profile;
@@ -1484,7 +1132,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
                   contractId: input.contractId,
                   isFinancialViewer: input.isFinancialViewer,
                   approvedBy: approverUserId,
-                  approvedAt: today(),
+                  approvedAt: todayISO(),
                 }
               : p,
           ),
@@ -1506,469 +1154,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
                 status: "rejected" as const,
                 rejectedReason: reason || "권한 승인 반려",
                 approvedBy: approverUserId,
-                approvedAt: today(),
+                approvedAt: todayISO(),
               }
             : p,
         ),
       }));
-    },
-    [persist],
-  );
-
-  const approveExtension = useCallback(
-    (approvalId: string) => {
-      persist((prev) => {
-        const approval = prev.extensionApprovals.find(
-          (a) => a.id === approvalId,
-        );
-        if (!approval) return prev;
-
-        const contract = prev.contracts.find(
-          (c) => c.id === approval.contractId,
-        );
-
-        return {
-          ...prev,
-          extensionApprovals: prev.extensionApprovals.map((a) =>
-            a.id === approvalId ? { ...a, status: "approved" as const } : a,
-          ),
-          contracts: prev.contracts.map((c) =>
-            c.id === approval.contractId
-              ? {
-                  ...c,
-                  isExtension: true,
-                  renewalMonthCount: Math.max(1, c.renewalMonthCount + 1),
-                  clientDepositStatus: "pending" as const,
-                  lastClientDepositDate: undefined,
-                }
-              : c,
-          ),
-        };
-      });
-    },
-    [persist],
-  );
-
-  const rejectExtension = useCallback(
-    (approvalId: string) => {
-      persist((prev) => ({
-        ...prev,
-        extensionApprovals: prev.extensionApprovals.map((a) =>
-          a.id === approvalId ? { ...a, status: "rejected" as const } : a,
-        ),
-      }));
-    },
-    [persist],
-  );
-
-  const requestExtension = useCallback(
-    (contractId: string, requestedBy: string): boolean => {
-      let ok = false;
-      persist((prev) => {
-        const contract = prev.contracts.find((c) => c.id === contractId);
-        if (!contract || contract.isExtension) return prev;
-
-        const hasPending = prev.extensionApprovals.some(
-          (a) => a.contractId === contractId && a.status === "pending",
-        );
-        if (hasPending) return prev;
-
-        ok = true;
-        return {
-          ...prev,
-          extensionApprovals: [
-            ...prev.extensionApprovals,
-            {
-              id: newId("ext"),
-              contractId,
-              requestedBy,
-              status: "pending" as const,
-              createdAt: new Date().toISOString().slice(0, 10),
-            },
-          ],
-        };
-      });
-      return ok;
-    },
-    [persist],
-  );
-
-  const markExpensesPaid = useCallback(
-    (ids: string[]) => {
-      persist((prev) => ({
-        ...prev,
-        expenses: prev.expenses.map((e) =>
-          ids.includes(e.id) && e.payoutStatus === "pending_transfer"
-            ? { ...e, payoutStatus: "paid" as const }
-            : e,
-        ),
-      }));
-    },
-    [persist],
-  );
-
-  const requestExpensePayout = useCallback(
-    (expenseId: string, requestedBy: string): boolean => {
-      let ok = false;
-      persist((prev) => {
-        const expense = prev.expenses.find((e) => e.id === expenseId);
-        const requester = prev.users.find((u) => u.id === requestedBy);
-        if (
-          !expense ||
-          !requester ||
-          !canUserRequestExpense(prev, expense, requestedBy, requester.role)
-        ) {
-          return prev;
-        }
-        ok = true;
-        return {
-          ...prev,
-          expenses: prev.expenses.map((e) =>
-            e.id === expenseId
-              ? {
-                  ...e,
-                  payoutStatus: "pending_approval" as const,
-                  payoutRequestedBy: requestedBy,
-                  payoutRequestedAt: todayISO(),
-                }
-              : e,
-          ),
-        };
-      });
-      return ok;
-    },
-    [persist],
-  );
-
-  const approveExpensePayout = useCallback(
-    (expenseId: string, approverId: string): boolean => {
-      let ok = false;
-      persist((prev) => {
-        const expense = prev.expenses.find((e) => e.id === expenseId);
-        const approver = prev.users.find((u) => u.id === approverId);
-        if (
-          !expense ||
-          expense.payoutStatus !== "pending_approval" ||
-          !approver ||
-          (approver.role !== "ceo" && approver.role !== "executive")
-        ) {
-          return prev;
-        }
-        ok = true;
-        return {
-          ...prev,
-          expenses: prev.expenses.map((e) =>
-            e.id === expenseId
-              ? {
-                  ...e,
-                  payoutStatus: "pending_transfer" as const,
-                  payoutApprovedBy: approverId,
-                  payoutApprovedAt: todayISO(),
-                }
-              : e,
-          ),
-        };
-      });
-      return ok;
-    },
-    [persist],
-  );
-
-  const rejectExpensePayout = useCallback(
-    (expenseId: string, approverId: string): boolean => {
-      let ok = false;
-      persist((prev) => {
-        const expense = prev.expenses.find((e) => e.id === expenseId);
-        const approver = prev.users.find((u) => u.id === approverId);
-        if (
-          !expense ||
-          expense.payoutStatus !== "pending_approval" ||
-          !approver ||
-          (approver.role !== "ceo" && approver.role !== "executive")
-        ) {
-          return prev;
-        }
-        ok = true;
-        return {
-          ...prev,
-          expenses: prev.expenses.map((e) =>
-            e.id === expenseId
-              ? {
-                  ...e,
-                  payoutStatus: "unpaid" as const,
-                  payoutRequestedBy: undefined,
-                  payoutRequestedAt: undefined,
-                }
-              : e,
-          ),
-        };
-      });
-      return ok;
-    },
-    [persist],
-  );
-
-  const today = () => new Date().toISOString().slice(0, 10);
-
-  const approveBonusTeamLeader = useCallback(
-    (paymentId: string, approverId: string) => {
-      persist((prev) => ({
-        ...prev,
-        bonusPayments: prev.bonusPayments.map((p) =>
-          p.id === paymentId && p.stage === "pending_team_leader"
-            ? {
-                ...p,
-                stage: "pending_executive" as const,
-                teamLeaderApprovedBy: approverId,
-                teamLeaderApprovedAt: today(),
-              }
-            : p,
-        ),
-      }));
-    },
-    [persist],
-  );
-
-  const approveBonusExecutive = useCallback(
-    (paymentId: string, approverId: string) => {
-      persist((prev) => ({
-        ...prev,
-        bonusPayments: prev.bonusPayments.map((p) =>
-          p.id === paymentId && p.stage === "pending_executive"
-            ? {
-                ...p,
-                stage: "pending_ceo" as const,
-                executiveApprovedBy: approverId,
-                executiveApprovedAt: today(),
-              }
-            : p,
-        ),
-      }));
-    },
-    [persist],
-  );
-
-  const approveBonusCeo = useCallback(
-    (paymentId: string, approverId: string) => {
-      persist((prev) => ({
-        ...prev,
-        bonusPayments: prev.bonusPayments.map((p) =>
-          p.id === paymentId && p.stage === "pending_ceo"
-            ? {
-                ...p,
-                stage: "ceo_confirmed" as const,
-                ceoApprovedBy: approverId,
-                ceoApprovedAt: today(),
-              }
-            : p,
-        ),
-      }));
-    },
-    [persist],
-  );
-
-  const rejectBonus = useCallback(
-    (paymentId: string, rejectedBy: string) => {
-      persist((prev) => ({
-        ...prev,
-        bonusPayments: prev.bonusPayments.map((p) =>
-          p.id === paymentId &&
-          p.stage !== "paid" &&
-          p.stage !== "rejected"
-            ? {
-                ...p,
-                stage: "rejected" as const,
-                rejectedBy,
-                rejectedAt: today(),
-              }
-            : p,
-        ),
-      }));
-    },
-    [persist],
-  );
-
-  const payBonus = useCallback(
-    (paymentId: string, paidBy: string) => {
-      let ok = false;
-      persist((prev) => {
-        const payment = prev.bonusPayments.find((p) => p.id === paymentId);
-        if (!payment || payment.stage !== "ceo_confirmed") return prev;
-        if (!isBonusPayDue(payment.scheduledPayDate)) return prev;
-
-        ok = true;
-        return {
-          ...prev,
-          bonusPayments: prev.bonusPayments.map((p) =>
-            p.id === paymentId
-              ? {
-                  ...p,
-                  stage: "paid" as const,
-                  paidBy,
-                  paidAt: today(),
-                }
-              : p,
-          ),
-          fundBudget: {
-            ...prev.fundBudget,
-            bonusAllocated: Math.max(
-              0,
-              prev.fundBudget.bonusAllocated - payment.totalAmount,
-            ),
-            operatingReserve:
-              prev.fundBudget.operatingReserve - payment.totalAmount,
-          },
-        };
-      });
-      return ok;
-    },
-    [persist],
-  );
-
-  const updateFundBudget = useCallback(
-    (input: Partial<FundBudget>) => {
-      persist((prev) => ({
-        ...prev,
-        fundBudget: { ...prev.fundBudget, ...input },
-      }));
-    },
-    [persist],
-  );
-
-  const terminateContract = useCallback(
-    (contractId: string, reason: TerminationReason) => {
-      persist((prev) => {
-        const contract = prev.contracts.find((c) => c.id === contractId);
-        if (!contract || contract.status === "terminated") return prev;
-
-        const now = todayISO();
-        return {
-          ...prev,
-          contracts: prev.contracts.map((c) =>
-            c.id === contractId
-              ? {
-                  ...c,
-                  status: "terminated" as const,
-                  terminationReason: reason,
-                  terminatedAt: now,
-                  contractEndDate: now,
-                }
-              : c,
-          ),
-          contractRecords: prev.contractRecords.map((r) =>
-            r.contractId === contractId && !r.endedAt
-              ? { ...r, endedAt: now, terminationReason: reason }
-              : r,
-          ),
-        };
-      });
-    },
-    [persist],
-  );
-
-  const setExecutiveBonusLimit = useCallback(
-    (executiveId: string, percent: number): boolean => {
-      if (percent < 0 || percent > 15) return false;
-      persist((prev) => ({
-        ...prev,
-        bonusPolicy: {
-          ...prev.bonusPolicy,
-          executiveMaxPercent: {
-            ...prev.bonusPolicy.executiveMaxPercent,
-            [executiveId]: percent,
-          },
-        },
-      }));
-      return true;
-    },
-    [persist],
-  );
-
-  const setTeamLeaderBonusLimit = useCallback(
-    (leaderId: string, percent: number): boolean => {
-      let ok = true;
-      persist((prev) => {
-        const err = validateTeamLeaderLimit(prev, prev.bonusPolicy, leaderId, percent);
-        if (err) {
-          ok = false;
-          return prev;
-        }
-        return {
-          ...prev,
-          bonusPolicy: {
-            ...prev.bonusPolicy,
-            teamLeaderMaxPercent: {
-              ...prev.bonusPolicy.teamLeaderMaxPercent,
-              [leaderId]: percent,
-            },
-          },
-        };
-      });
-      return ok;
-    },
-    [persist],
-  );
-
-  const setStaffBonusPercent = useCallback(
-    (staffId: string, percent: number): boolean => {
-      let ok = true;
-      persist((prev) => {
-        const err = validateStaffPercent(prev, prev.bonusPolicy, staffId, percent);
-        if (err) {
-          ok = false;
-          return prev;
-        }
-        return {
-          ...prev,
-          bonusPolicy: {
-            ...prev.bonusPolicy,
-            staffPercent: {
-              ...prev.bonusPolicy.staffPercent,
-              [staffId]: percent,
-            },
-          },
-        };
-      });
-      return ok;
-    },
-    [persist],
-  );
-
-  const requestBonusPayment = useCallback(
-    (contractId: string, requestedBy: string): boolean => {
-      let ok = false;
-      persist((prev) => {
-        const contract = prev.contracts.find((c) => c.id === contractId);
-        if (!contract || contract.assignedStaffId !== requestedBy) return prev;
-        if (!canRequestBonus(contract)) {
-          return prev;
-        }
-
-        const duplicate = prev.bonusPayments.some(
-          (p) =>
-            p.contractId === contractId &&
-            !["paid", "rejected"].includes(p.stage),
-        );
-        if (duplicate) return prev;
-
-        ok = true;
-        return {
-          ...prev,
-          bonusPayments: [
-            ...prev.bonusPayments,
-            {
-              ...createBonusPaymentFromContract(
-                contract,
-                prev.bonusPolicy,
-                prev,
-                requestedBy,
-              ),
-              id: newId("bp"),
-            },
-          ],
-        };
-      });
-      return ok;
     },
     [persist],
   );
@@ -2115,500 +1305,39 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [persist],
   );
 
-  const addExperienceFieldDefinition = useCallback(
-    (input: ExperienceFieldDefinitionInput) => {
-      const field: ExperienceFieldDefinition = { ...input };
+  const updatePartnerLocation = useCallback(
+    (partnerId: string, input: LocationProfileInput) => {
       persist((prev) => ({
         ...prev,
-        experienceFieldDefinitions: [
-          ...prev.experienceFieldDefinitions,
-          field,
-        ].sort((a, b) => a.sortOrder - b.sortOrder),
-      }));
-      return field;
-    },
-    [persist],
-  );
-
-  const updateExperienceFieldDefinition = useCallback(
-    (id: string, input: Partial<ExperienceFieldDefinitionInput>) => {
-      persist((prev) => ({
-        ...prev,
-        experienceFieldDefinitions: prev.experienceFieldDefinitions
-          .map((f) => (f.id === id ? { ...f, ...input } : f))
-          .sort((a, b) => a.sortOrder - b.sortOrder),
-      }));
-    },
-    [persist],
-  );
-
-  const deleteExperienceFieldDefinition = useCallback(
-    (id: string): boolean => {
-      let ok = false;
-      persist((prev) => {
-        const field = prev.experienceFieldDefinitions.find((f) => f.id === id);
-        if (!field || field.isSystem) return prev;
-        const inUse = (prev.experienceCampaigns ?? []).some((campaign) => {
-          const cat = campaign.criteria.category;
-          return cat === field.id || cat === field.label;
-        });
-        if (inUse) return prev;
-        ok = true;
-        return {
-          ...prev,
-          experienceFieldDefinitions: prev.experienceFieldDefinitions.filter(
-            (f) => f.id !== id,
-          ),
-        };
-      });
-      return ok;
-    },
-    [persist],
-  );
-
-  const upsertPlaceCredentials = useCallback(
-    (
-      contractId: string,
-      input: PlaceCredentialsInput,
-      userId: string,
-    ): PlaceCredentials => {
-      const now = todayISO();
-      let saved: PlaceCredentials = {
-        id: newId("pc"),
-        contractId,
-        ...input,
-        updatedAt: now,
-        updatedByUserId: userId,
-      };
-      persist((prev) => {
-        const existing = prev.placeCredentials.find(
-          (p) => p.contractId === contractId,
-        );
-        saved = existing
-          ? { ...existing, ...input, updatedAt: now, updatedByUserId: userId }
-          : saved;
-        const rest = prev.placeCredentials.filter(
-          (p) => p.contractId !== contractId,
-        );
-        return { ...prev, placeCredentials: [...rest, saved] };
-      });
-      return saved;
-    },
-    [persist],
-  );
-
-  const createQaThread = useCallback(
-    (
-      contractId: string,
-      subject: string,
-      body: string,
-      userId: string,
-    ): QaThread => {
-      const now = todayISO();
-      const threadId = newId("qa");
-      const messageId = newId("qm");
-      let created: QaThread = {
-        id: threadId,
-        contractId,
-        subject,
-        status: "open",
-        createdByUserId: userId,
-        assignedStaffId: "",
-        createdAt: now,
-        lastMessageAt: now,
-      };
-      persist((prev) => {
-        const contract = prev.contracts.find((c) => c.id === contractId);
-        const author = prev.users.find((u) => u.id === userId);
-        if (
-          !contract ||
-          !author ||
-          !canCreateClientQaThread(prev, author.role, userId, contractId)
-        ) {
-          return prev;
-        }
-        created = {
-          ...created,
-          assignedStaffId: contract.assignedStaffId,
-        };
-        const message: QaMessage = {
-          id: messageId,
-          threadId,
-          authorUserId: userId,
-          body,
-          createdAt: now,
-        };
-        return {
-          ...prev,
-          qaThreads: [...prev.qaThreads, created],
-          qaMessages: [...prev.qaMessages, message],
-        };
-      });
-      return created;
-    },
-    [persist],
-  );
-
-  const replyQaThread = useCallback(
-    (threadId: string, body: string, userId: string): QaMessage => {
-      const now = todayISO();
-      const message: QaMessage = {
-        id: newId("qm"),
-        threadId,
-        authorUserId: userId,
-        body,
-        createdAt: now,
-      };
-      persist((prev) => {
-        const author = prev.users.find((u) => u.id === userId);
-        const thread = prev.qaThreads.find((t) => t.id === threadId);
-        if (
-          !author ||
-          !thread ||
-          !canReplyQa(prev, author.role, userId, thread.contractId)
-        ) {
-          return prev;
-        }
-        const isClient = author.role === "client";
-        return {
-          ...prev,
-          qaMessages: [...prev.qaMessages, message],
-          qaThreads: prev.qaThreads.map((t) => {
-            if (t.id !== threadId) return t;
-            return {
-              ...t,
-              lastMessageAt: now,
-              status: isClient ? "open" : "answered",
-            };
-          }),
-        };
-      });
-      return message;
-    },
-    [persist],
-  );
-
-  const closeQaThread = useCallback(
-    (threadId: string, userId: string) => {
-      const now = todayISO();
-      persist((prev) => ({
-        ...prev,
-        qaThreads: prev.qaThreads.map((t) =>
-          t.id === threadId
-            ? {
-                ...t,
-                status: "closed" as const,
-                closedAt: now,
-                closedByUserId: userId,
-              }
-            : t,
+        partners: prev.partners.map((partner) =>
+          partner.id === partnerId
+            ? normalizePartner({
+                ...partner,
+                address: input.address?.trim() || undefined,
+                regionProvince: input.regionProvince || undefined,
+                regionCity: input.regionCity || undefined,
+              })
+            : partner,
         ),
       }));
     },
     [persist],
   );
 
-  const addExperienceCampaign = useCallback(
-    (contractId: string, createdByUserId: string): ExperienceCampaign => {
-      let saved: ExperienceCampaign = {
-        id: newId("exc"),
-        contractId,
-        title: "",
-        sequence: 1,
-        criteria: {
-          targetHeadcount: 10,
-          category: "맛집",
-          requirements: "",
-          providedBenefit: "",
-          notes: "",
-        },
-        schedulingStatus: "draft",
-        proposals: [],
-        participants: [],
-        createdByUserId,
-        createdAt: todayISO(),
-        updatedAt: todayISO(),
-      };
-      persist((prev) => {
-        const contract = prev.contracts.find((c) => c.id === contractId);
-        if (!contract) return prev;
-        const draft = createExperienceCampaignDraft(
-          contract,
-          prev.experienceCampaigns ?? [],
-          prev.workOrders,
-          createdByUserId,
-          prev.experienceFieldDefinitions,
-        );
-        saved = { ...draft, id: newId("exc") };
-        return {
-          ...prev,
-          experienceCampaigns: [
-            ...(prev.experienceCampaigns ?? []),
-            saved,
-          ],
-        };
-      });
-      return saved;
-    },
-    [persist],
-  );
-
-  const updateExperienceCampaign = useCallback(
-    (
-      id: string,
-      input: Partial<
-        Pick<
-          ExperienceCampaign,
-          | "criteria"
-          | "schedulingStatus"
-          | "title"
-          | "workOrderId"
-          | "confirmedVisitDate"
-          | "confirmedVisitTime"
-          | "confirmedVisitEndTime"
-        >
-      >,
-    ) => {
-      persist((prev) => ({
-        ...prev,
-        experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
-          c.id === id ? { ...c, ...input, updatedAt: todayISO() } : c,
-        ),
-      }));
-    },
-    [persist],
-  );
-
-  const sendExperienceCampaignToClient = useCallback(
-    (id: string) => {
-      persist((prev) => ({
-        ...prev,
-        experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
-          c.id === id
-            ? {
-                ...c,
-                schedulingStatus: "coordinating" as const,
-                sentToClientAt: todayISO(),
-                updatedAt: todayISO(),
-              }
-            : c,
-        ),
-      }));
-    },
-    [persist],
-  );
-
-  const proposeExperienceSchedule = useCallback(
-    (
-      campaignId: string,
-      userId: string,
-      input: ExperienceScheduleProposalInput,
-    ) => {
-      persist((prev) => {
-        const campaign = (prev.experienceCampaigns ?? []).find(
-          (c) => c.id === campaignId,
-        );
-        if (!campaign || campaign.schedulingStatus === "cancelled") return prev;
-
-        const requester = prev.users.find((u) => u.id === userId);
-        if (!requester) return prev;
-
-        const proposal = buildProposal(input, userId);
-        const nextStatus =
-          campaign.schedulingStatus === "draft"
-            ? ("coordinating" as const)
-            : campaign.schedulingStatus;
-
-        return {
-          ...prev,
-          experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
-            c.id === campaignId
-              ? {
-                  ...c,
-                  schedulingStatus: nextStatus,
-                  proposals: [
-                    ...c.proposals.map((p) =>
-                      p.status === "pending"
-                        ? { ...p, status: "rejected" as const }
-                        : p,
-                    ),
-                    proposal,
-                  ],
-                  updatedAt: todayISO(),
-                }
-              : c,
-          ),
-        };
-      });
-    },
-    [persist],
-  );
-
-  const acceptExperienceProposal = useCallback(
-    (campaignId: string, proposalId: string, userId: string) => {
-      persist((prev) => {
-        const campaign = (prev.experienceCampaigns ?? []).find(
-          (c) => c.id === campaignId,
-        );
-        if (!campaign) return prev;
-        const proposal = campaign.proposals.find((p) => p.id === proposalId);
-        if (!proposal || proposal.status !== "pending") return prev;
-
-        const updated = applyAcceptedProposal(campaign, proposal, userId);
-        let workOrders = prev.workOrders;
-        if (updated.workOrderId && updated.confirmedVisitDate) {
-          workOrders = prev.workOrders.map((o) =>
-            o.id === updated.workOrderId
-              ? { ...o, dueDate: updated.confirmedVisitDate! }
-              : o,
-          );
-        }
-
-        return {
-          ...prev,
-          workOrders,
-          experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
-            c.id === campaignId ? updated : c,
-          ),
-        };
-      });
-    },
-    [persist],
-  );
-
-  const addExperienceParticipant = useCallback(
-    (campaignId: string, userId: string, input: ExperienceParticipantInput) => {
-      persist((prev) => {
-        const campaign = (prev.experienceCampaigns ?? []).find(
-          (c) => c.id === campaignId,
-        );
-        if (!campaign) return prev;
-        const actor = prev.users.find((u) => u.id === userId);
-        if (!actor || !["staff", "team_leader"].includes(actor.role)) {
-          return prev;
-        }
-        const participant = createParticipantRecord(input, userId);
-        return {
-          ...prev,
-          experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
-            c.id === campaignId
-              ? {
-                  ...c,
-                  participants: [...c.participants, participant],
-                  updatedAt: todayISO(),
-                }
-              : c,
-          ),
-        };
-      });
-    },
-    [persist],
-  );
-
-  const removeExperienceParticipant = useCallback(
-    (campaignId: string, participantId: string) => {
-      persist((prev) => ({
-        ...prev,
-        experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
-          c.id === campaignId
-            ? {
-                ...c,
-                participants: c.participants.filter((p) => p.id !== participantId),
-                updatedAt: todayISO(),
-              }
-            : c,
-        ),
-      }));
-    },
-    [persist],
-  );
-
-  const updateExperienceParticipant = useCallback(
-    (
-      campaignId: string,
-      participantId: string,
-      input: ExperienceParticipantUpdate,
-    ) => {
-      persist((prev) => ({
-        ...prev,
-        experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
-          c.id === campaignId
-            ? {
-                ...c,
-                participants: c.participants.map((p) =>
-                  p.id === participantId
-                    ? normalizeExperienceParticipant({ ...p, ...input })
-                    : p,
-                ),
-                updatedAt: todayISO(),
-              }
-            : c,
-        ),
-      }));
-    },
-    [persist],
-  );
-
-  const addPostLinkOpinion = useCallback(
-    (input: PostLinkOpinionInput) => {
-      const opinion: PostLinkOpinion = {
-        ...input,
-        id: newId("plo"),
-        createdAt: todayISO(),
-        body: input.body.trim(),
-        imageUrls: input.imageUrls ?? [],
-      };
-      persist((prev) => ({
-        ...prev,
-        postLinkOpinions: [...(prev.postLinkOpinions ?? []), opinion],
-      }));
-      return opinion;
-    },
-    [persist],
-  );
-
-  const addContractMemo = useCallback(
-    (contractId: string, body: string, authorUserId: string) => {
-      const trimmed = body.trim();
-      if (!trimmed) return null;
-
-      let created: ContractMemo | null = null;
-      persist((prev) => {
-        const contract = prev.contracts.find((c) => c.id === contractId);
-        if (!contract) return prev;
-
-        created = {
-          id: newId("cm"),
-          contractId,
-          body: trimmed,
-          createdAt: todayISO(),
-          assignedStaffId: contract.assignedStaffId,
-          authorUserId,
-        };
-
-        return {
-          ...prev,
-          contractMemos: [...(prev.contractMemos ?? []), created],
-        };
-      });
-      return created;
-    },
-    [persist],
-  );
-
-  const deleteContractMemo = useCallback(
-    (id: string) => {
-      persist((prev) => ({
-        ...prev,
-        contractMemos: (prev.contractMemos ?? []).filter((m) => m.id !== id),
-      }));
-    },
-    [persist],
-  );
-
-  const resetData = useCallback(() => {
+  const resetData = useCallback((options?: { reload?: boolean }) => {
     seedFallbackCache = null;
-    setData(createSeedData());
+    clearAppStorage();
+    const fresh = createSeedData();
+    setData(fresh);
+    void saveAppData(fresh).then((result) => {
+      if (!result.ok && result.reason === "quota") {
+        console.warn("샘플 데이터 저장 실패 — localStorage 용량을 확인해 주세요.");
+        return;
+      }
+      if (options?.reload !== false) {
+        window.location.reload();
+      }
+    });
   }, []);
 
   const upsertWorkEvaluation = useCallback((input: WorkEvaluationInput) => {
@@ -2655,40 +1384,35 @@ export function DataProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const updateClientDepositStatus = useCallback(
-    (contractId: string, status: ClientDepositStatus, depositDate?: string) => {
-      const today = todayISO();
-      persist((prev) => {
-        let updated: Contract | undefined;
-        const contracts = prev.contracts.map((c) => {
-          if (c.id !== contractId) return c;
-          const next: Contract = { ...c, clientDepositStatus: status };
-          if (status === "completed") {
-            next.lastClientDepositDate =
-              depositDate || c.lastClientDepositDate || today;
-          } else if (status === "pending") {
-            next.lastClientDepositDate = undefined;
-          }
-          updated = next;
-          return next;
-        });
-
-        const bonusPayments = prev.bonusPayments.map((p) => {
-          if (p.contractId !== contractId) return p;
-          const deposit = updated?.lastClientDepositDate;
-          if (!deposit) return p;
-          return {
-            ...p,
-            clientDepositDate: deposit,
-            closingDeadline: calcBonusClosingDeadline(deposit),
-            scheduledPayDate: calcScheduledPayDate(deposit),
-          };
-        });
-
-        return { ...prev, contracts, bonusPayments };
+  const dismissClientPortalAction = useCallback(
+    (contractId: string, userId: string, actionId: string) => {
+      setData((prev) => {
+        const existing = prev.clientPortalActionDismissals ?? [];
+        if (
+          existing.some(
+            (d) =>
+              d.contractId === contractId &&
+              d.userId === userId &&
+              d.actionId === actionId,
+          )
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          clientPortalActionDismissals: [
+            ...existing,
+            {
+              contractId,
+              userId,
+              actionId,
+              dismissedAt: DEMO_TODAY,
+            },
+          ],
+        };
       });
     },
-    [persist],
+    [],
   );
 
   const value = useMemo<DataContextValue>(
@@ -2719,9 +1443,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       submitWorkOrder,
       approveWorkOrder,
       rejectWorkOrder,
+      confirmWorkOrderByStaff,
+      rejectWorkOrderByStaff,
       deliverWorkOrder,
       confirmWorkOrderPayment,
       ensureContractWorkOrders,
+      cancelWorkOrder,
+      holdWorkOrder,
+      postponeWorkOrder,
+      resumeWorkOrder,
       ensureContractExecutions,
       upsertAccountFromAuth,
       approveAccountProfile,
@@ -2770,9 +1500,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addExperienceParticipant,
       removeExperienceParticipant,
       updateExperienceParticipant,
+      updateContractLocation,
+      updateContractClientLinks,
+      updatePartnerLocation,
+      publishExperiencePartnerSlot,
+      claimExperiencePartnerSlot,
+      cancelExperiencePartnerSlot,
+      submitExperienceParticipationProposal,
+      acceptExperienceParticipationProposal,
+      rejectExperienceParticipationProposal,
       addContractMemo,
       deleteContractMemo,
       upsertWorkEvaluation,
+      dismissClientPortalAction,
       resetData,
     }),
     [
@@ -2801,9 +1541,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       submitWorkOrder,
       approveWorkOrder,
       rejectWorkOrder,
+      confirmWorkOrderByStaff,
+      rejectWorkOrderByStaff,
       deliverWorkOrder,
       confirmWorkOrderPayment,
       ensureContractWorkOrders,
+      cancelWorkOrder,
+      holdWorkOrder,
+      postponeWorkOrder,
+      resumeWorkOrder,
       ensureContractExecutions,
       upsertAccountFromAuth,
       approveAccountProfile,
@@ -2852,15 +1598,39 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addExperienceParticipant,
       removeExperienceParticipant,
       updateExperienceParticipant,
+      updateContractLocation,
+      updateContractClientLinks,
+      updatePartnerLocation,
+      publishExperiencePartnerSlot,
+      claimExperiencePartnerSlot,
+      cancelExperiencePartnerSlot,
+      submitExperienceParticipationProposal,
+      acceptExperienceParticipationProposal,
+      rejectExperienceParticipationProposal,
       addContractMemo,
       deleteContractMemo,
       upsertWorkEvaluation,
+      dismissClientPortalAction,
       resetData,
     ],
   );
 
   return (
-    <DataContext.Provider value={value}>{children}</DataContext.Provider>
+    <DataContext.Provider value={value}>
+      <ContractStoreProvider value={contractStore}>
+        <FinanceStoreProvider value={financeStore}>
+          <WorkOrderStoreProvider value={workOrderStore}>
+            <BonusStoreProvider value={bonusStore}>
+              <QaStoreProvider value={qaStore}>
+                <ExperienceStoreProvider value={experienceStore}>
+                  {children}
+                </ExperienceStoreProvider>
+              </QaStoreProvider>
+            </BonusStoreProvider>
+          </WorkOrderStoreProvider>
+        </FinanceStoreProvider>
+      </ContractStoreProvider>
+    </DataContext.Provider>
   );
 }
 

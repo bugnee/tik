@@ -49,6 +49,16 @@ export function getContractExperienceCampaigns(
     .sort((a, b) => a.sequence - b.sequence);
 }
 
+/** 고객사 포털 — draft 제외 전체 체험단 이력 */
+export function getClientExperienceHistoryCampaigns(
+  campaigns: ExperienceCampaign[],
+  contractId: string,
+): ExperienceCampaign[] {
+  return getContractExperienceCampaigns(campaigns, contractId).filter(
+    (c) => c.schedulingStatus !== "draft",
+  );
+}
+
 export function findExperienceWorkOrder(
   workOrders: WorkOrder[],
   contractId: string,

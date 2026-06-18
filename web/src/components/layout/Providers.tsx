@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { AuthProvider } from "@/context/AuthContext";
 import { DataProvider, useData } from "@/context/DataContext";
@@ -26,8 +26,13 @@ export function AppReadyGate({
   message?: string;
 }) {
   const { hydrated } = useData();
+  const [mounted, setMounted] = useState(false);
 
-  if (!hydrated) {
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || !hydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--background)]">
         <div className="flex flex-col items-center gap-3">

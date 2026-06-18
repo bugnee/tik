@@ -4,10 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarCheck, Plus, Send } from "lucide-react";
 import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
+import { useExperience } from "@/features/experience/useExperience";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { ExperienceParticipantListEditor } from "@/components/experience/ExperienceParticipantListEditor";
+import { ExperiencePartnerSlotStaffPanel } from "@/components/experience/ExperiencePartnerSlotStaffPanel";
 import { Input, Select, Textarea } from "@/components/ui/FormFields";
 import {
   formatExperienceFieldAssignees,
@@ -15,6 +18,7 @@ import {
   getExperienceFieldLabel,
   resolveExperienceField,
 } from "@/lib/experience-field-utils";
+import { valuesEqual } from "@/lib/form-dirty";
 import {
   EXPERIENCE_SCHEDULING_STATUS_LABELS,
   EXPERIENCE_STATUS_BADGE_VARIANT,
@@ -35,22 +39,26 @@ export function ExperienceCampaignPanel({
   contractId,
   mode,
   readOnly = false,
+  filterCampaignId,
 }: {
   contractId: string;
   mode: PanelMode;
   readOnly?: boolean;
+  /** 단일 캠페인만 표시 (체험단 이력 상세 등) */
+  filterCampaignId?: string;
 }) {
   const data = useData();
+  const experience = useExperience();
   const { currentUser } = useRole();
+  const { contracts } = data;
   const {
     experienceCampaigns,
-    contracts,
     addExperienceCampaign,
     updateExperienceCampaign,
     sendExperienceCampaignToClient,
     proposeExperienceSchedule,
     acceptExperienceProposal,
-  } = data;
+  } = experience;
 
   const contract = contracts.find((c) => c.id === contractId);
   const campaigns = useMemo(
@@ -59,9 +67,12 @@ export function ExperienceCampaignPanel({
   );
 
   const visibleCampaigns = useMemo(() => {
-    if (mode === "staff") return campaigns;
-    return campaigns.filter((c) => c.schedulingStatus !== "draft");
-  }, [campaigns, mode]);
+    let list = mode === "staff" ? campaigns : campaigns.filter((c) => c.schedulingStatus !== "draft");
+    if (filterCampaignId) {
+      list = list.filter((c) => c.id === filterCampaignId);
+    }
+    return list;
+  }, [campaigns, mode, filterCampaignId]);
 
   const [expandedId, setExpandedId] = useState<string | null>(
     visibleCampaigns[0]?.id ?? null,
@@ -287,6 +298,17 @@ export function ExperienceCampaignPanel({
                       readOnly={participantReadOnly}
                     />
                   )}
+
+                  {mode === "staff" &&
+                    ["confirmed", "recruiting", "coordinating"].includes(
+                      campaign.schedulingStatus,
+                    ) && (
+                      <ExperiencePartnerSlotStaffPanel
+                        campaign={campaign}
+                        contractId={contractId}
+                        readOnly={readOnly}
+                      />
+                    )}
                 </div>
               )}
             </div>
@@ -307,19 +329,22 @@ function CriteriaBlock({
   onSave: (criteria: ExperienceRecruitmentCriteria) => void;
 }) {
   const data = useData();
+  const { experienceFieldDefinitions } = useExperience();
   const [criteria, setCriteria] = useState(campaign.criteria);
   const activeFields = useMemo(
-    () => getActiveExperienceFields(data.experienceFieldDefinitions),
-    [data.experienceFieldDefinitions],
+    () => getActiveExperienceFields(experienceFieldDefinitions),
+    [experienceFieldDefinitions],
   );
   const selectedField = useMemo(
-    () => resolveExperienceField(data.experienceFieldDefinitions, criteria.category),
-    [data.experienceFieldDefinitions, criteria.category],
+    () => resolveExperienceField(experienceFieldDefinitions, criteria.category),
+    [experienceFieldDefinitions, criteria.category],
   );
 
   useEffect(() => {
     setCriteria(campaign.criteria);
   }, [campaign.id, campaign.criteria]);
+
+  const criteriaDirty = !valuesEqual(criteria, campaign.criteria);
 
   if (!editable) {
     return (
@@ -328,7 +353,7 @@ function CriteriaBlock({
         <CriteriaRow
           label="분야"
           value={getExperienceFieldLabel(
-            data.experienceFieldDefinitions,
+            experienceFieldDefinitions,
             criteria.category,
           )}
         />
@@ -404,9 +429,9 @@ function CriteriaBlock({
         onChange={(e) => setCriteria({ ...criteria, notes: e.target.value })}
         rows={2}
       />
-      <Button size="sm" variant="secondary" onClick={() => onSave(criteria)}>
+      <SaveButton size="sm" dirty={criteriaDirty} onClick={() => onSave(criteria)}>
         조건 저장
-      </Button>
+      </SaveButton>
     </div>
   );
 }

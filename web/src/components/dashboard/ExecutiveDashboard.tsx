@@ -21,17 +21,24 @@ import { ExtensionBonusDetailModal } from "@/components/dashboard/ExtensionBonus
 import { BonusApprovalPanel } from "@/components/bonus/BonusApprovalPanel";
 import { ExpensePayoutApprovalPanel } from "@/components/finance/ExpensePayoutApprovalPanel";
 import { BonusPolicyPanel } from "@/components/bonus/BonusPolicyPanel";
+import { BonusPayrollSummaryPanel } from "@/components/bonus/BonusPayrollSummaryPanel";
 import { PlaceQaDashboardPanel } from "@/components/place-qa/PlaceQaDashboardPanel";
+import { StaffWorkConfirmPanel } from "@/components/work-orders/StaffWorkConfirmPanel";
 import { useData } from "@/context/DataContext";
+import {
+  useDashboardPeriod,
+  useDashboardPeriodScope,
+  useRolePeriodContracts,
+} from "@/context/DashboardPeriodContext";
 import { useRole } from "@/context/RoleContext";
 import {
   calcBonusAmounts,
   getExecutiveLimit,
   isBonusEligible,
 } from "@/lib/bonus-utils";
+import { getTeamRankingsForContracts } from "@/lib/dashboard-period-utils";
 import { formatBonusKRW } from "@/lib/bonus-utils";
 import { formatKRW } from "@/lib/finance";
-import { getTeamRankings } from "@/lib/selectors";
 import type { Contract, TeamRanking } from "@/lib/types";
 
 const RANK_COLORS = ["#10b981", "#06b6d4", "#f59e0b"];
@@ -48,7 +55,9 @@ function getTeamBonusContracts(contracts: Contract[], teamId: string) {
 export function ExecutiveDashboard() {
   const data = useData();
   const { currentUser } = useRole();
-  const { contracts } = data;
+  const { periodLabel } = useDashboardPeriod();
+  const contracts = useRolePeriodContracts("executive", currentUser.id);
+  const periodScope = useDashboardPeriodScope();
   const [selectedTeam, setSelectedTeam] = useState<SelectedTeamBonus | null>(
     null,
   );
@@ -62,7 +71,7 @@ export function ExecutiveDashboard() {
     (c) => c.isExtension && teamIds.includes(c.teamId),
   );
   const extensionRevenue = extensionContracts.reduce(
-    (s, c) => s + c.monthlyFee,
+    (s, c) => s + periodScope.getContractFee(c),
     0,
   );
   const executiveBonus = contracts
@@ -72,7 +81,11 @@ export function ExecutiveDashboard() {
         s + calcBonusAmounts(c, data.bonusPolicy, data).executiveBonusAmount,
       0,
     );
-  const allRankings = getTeamRankings(data);
+  const allRankings = getTeamRankingsForContracts(
+    data,
+    contracts,
+    periodScope.getContractFee,
+  );
   const rankings = allRankings.filter((t) => teamIds.includes(t.teamId));
   const totalRevenue = rankings.reduce((s, t) => s + t.revenue, 0);
 
@@ -95,8 +108,10 @@ export function ExecutiveDashboard() {
     <div className="space-y-6">
       <DashboardHeader
         title="임원 대시보드"
-        description="산하 팀 매출 기여도 · 연장 계약 현황"
+        description={`${periodLabel} · 산하 팀 매출 기여도 · 연장 계약 현황`}
       />
+
+      <StaffWorkConfirmPanel />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
@@ -174,6 +189,8 @@ export function ExecutiveDashboard() {
           ) : undefined
         }
       >
+        <BonusPayrollSummaryPanel />
+
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--card-muted)] px-4 py-3">
           <div>
             <p className="text-sm font-medium text-[var(--foreground)]">

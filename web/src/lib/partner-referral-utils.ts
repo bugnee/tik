@@ -109,7 +109,7 @@ export function buildPartnerReferralRows(
       contractId: contract.id,
       clientName: contract.clientName,
       introducedAt: contract.contractStartDate,
-      memo: "계약 연동 · 소개 프로모션",
+      memo: "계약 연동 · 리셀러 프로모션",
       monthlyFee: contract.monthlyFee,
       commission: calcReferralCommission(contract.monthlyFee),
       status,

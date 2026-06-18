@@ -43,6 +43,8 @@ export interface QaContractRow {
   threadCount: number;
   linkOpinionCount: number;
   needsReply: number;
+  hasPlaceSetting: boolean;
+  hasPlaceCredentials: boolean;
   lastActivity?: string;
 }
 
@@ -198,6 +200,9 @@ export function getQaContractRows(
         .filter(Boolean)
         .sort()
         .reverse()[0];
+      const hasPlaceCredentials = Boolean(
+        getPlaceCredentialsForContract(data, contract.id),
+      );
 
       return {
         contractId: contract.id,
@@ -206,6 +211,8 @@ export function getQaContractRows(
         threadCount: threads.length,
         linkOpinionCount,
         needsReply,
+        hasPlaceSetting: contract.hasPlaceSetting,
+        hasPlaceCredentials,
         lastActivity,
       };
     })
@@ -213,7 +220,8 @@ export function getQaContractRows(
       (row) =>
         row.threadCount > 0 ||
         row.linkOpinionCount > 0 ||
-        row.needsReply > 0,
+        row.needsReply > 0 ||
+        row.hasPlaceSetting,
     )
 
     .sort((a, b) => {

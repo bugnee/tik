@@ -16,7 +16,7 @@ import type {
   WorkEvaluationMetrics,
   WorkEvaluationScores,
 } from "@/lib/types";
-import { WORK_EVALUATION_CRITERIA } from "@/lib/types";
+import { WORK_EVALUATION_ACHIEVEMENT_BANDS, WORK_EVALUATION_CRITERIA, WORK_EVALUATION_KPI_TARGETS, WORK_EVALUATION_OVERALL_GRADES, WORK_EVALUATION_SCORE_MAX, WORK_EVALUATION_STAFF_CONTRIBUTION_FACTOR, WORK_EVALUATION_WEIGHTS, type WorkEvaluationGrade } from "@/lib/types";
 
 const INTERNAL_EVALUATOR_ROLES: UserRole[] = [
   "team_leader",
@@ -24,14 +24,8 @@ const INTERNAL_EVALUATOR_ROLES: UserRole[] = [
   "ceo",
 ];
 
-const SUPPLEMENTAL_EVALUATOR_ROLES: UserRole[] = ["executive", "ceo"];
-
 export function canSubmitWorkEvaluation(role: UserRole): boolean {
   return INTERNAL_EVALUATOR_ROLES.includes(role);
-}
-
-export function canAddSupplementalEvaluation(role: UserRole): boolean {
-  return SUPPLEMENTAL_EVALUATOR_ROLES.includes(role);
 }
 
 export function canViewWorkEvaluations(role: UserRole): boolean {
@@ -66,70 +60,163 @@ export function computeEvaluationMetrics(
     (sum, contract) => sum + contract.monthlyFee,
     0,
   );
+  const companyRevenueTotal = getCompanyActiveRevenueTotal(data);
+  const companyRevenueSharePercent =
+    companyRevenueTotal > 0
+      ? (contractAmountTotal / companyRevenueTotal) * 100
+      : 0;
 
   return {
     executionProgressPercent: Math.round(executionProgressPercent * 10) / 10,
     extensionRatePercent: Math.round(extensionRatePercent * 10) / 10,
     contractAmountTotal,
     contractCount: contracts.length,
+    companyRevenueSharePercent:
+      Math.round(companyRevenueSharePercent * 10) / 10,
   };
 }
 
-function peerContractAmountBenchmark(data: AppData, evaluatee: User): number {
-  const peers = data.users.filter((user) => user.role === evaluatee.role);
-  const totals = peers.map((user) =>
-    computeEvaluationMetrics(data, user).contractAmountTotal,
-  );
-  return Math.max(...totals, 1);
+function getCompanyActiveRevenueTotal(data: AppData): number {
+  return data.contracts
+    .filter((contract) => contract.status === "active")
+    .reduce((sum, contract) => sum + contract.monthlyFee, 0);
 }
 
-function percentToScore(percent: number): number {
-  return clampScore(1 + (Math.min(100, Math.max(0, percent)) / 100) * 4);
-}
-
-function contractVolumeToScore(
-  data: AppData,
-  evaluatee: User,
-  totalAmount: number,
+/** KPI 목표 대비 달성률(%) — 120% 초과 구간은 그대로 반영 */
+export function getCriterionAchievementPercent(
+  key: WorkEvaluationCriterion,
+  metrics: WorkEvaluationMetrics,
 ): number {
-  if (totalAmount <= 0) return 1;
-  const benchmark = peerContractAmountBenchmark(data, evaluatee);
-  const ratio = totalAmount / benchmark;
-  return clampScore(1 + Math.min(1, ratio) * 4);
+  switch (key) {
+    case "executionProgress":
+      return (
+        (metrics.executionProgressPercent /
+          WORK_EVALUATION_KPI_TARGETS.executionProgressPercent) *
+        100
+      );
+    case "extensionRate":
+      return metrics.extensionRatePercent <= 0
+        ? 0
+        : (metrics.extensionRatePercent /
+            WORK_EVALUATION_KPI_TARGETS.extensionRatePercent) *
+          100;
+    case "contractVolume": {
+      const attributedShare =
+        metrics.companyRevenueSharePercent *
+        WORK_EVALUATION_STAFF_CONTRIBUTION_FACTOR;
+      const targetShare =
+        WORK_EVALUATION_KPI_TARGETS.companyRevenueSharePercent *
+        WORK_EVALUATION_STAFF_CONTRIBUTION_FACTOR;
+      return targetShare <= 0
+        ? 0
+        : (attributedShare / targetShare) * 100;
+    }
+  }
+}
+
+/** 달성률 → 구간 점수·등급 */
+export function achievementPercentToGradeScore(achievementPercent: number): {
+  score: number;
+  grade: WorkEvaluationGrade;
+  gradeLabel: string;
+} {
+  const value = Math.max(0, achievementPercent);
+  for (const band of WORK_EVALUATION_ACHIEVEMENT_BANDS) {
+    if (value >= band.minAchievement) {
+      return {
+        score: band.score,
+        grade: band.grade,
+        gradeLabel: band.label,
+      };
+    }
+  }
+  const fallback = WORK_EVALUATION_ACHIEVEMENT_BANDS.at(-1)!;
+  return {
+    score: fallback.score,
+    grade: fallback.grade,
+    gradeLabel: fallback.label,
+  };
+}
+
+export function getOverallEvaluationGrade(overallScore: number): {
+  grade: WorkEvaluationGrade;
+  label: string;
+} {
+  for (const row of WORK_EVALUATION_OVERALL_GRADES) {
+    if (overallScore >= row.minScore) {
+      return { grade: row.grade, label: row.label };
+    }
+  }
+  const fallback = WORK_EVALUATION_OVERALL_GRADES.at(-1)!;
+  return { grade: fallback.grade, label: fallback.label };
+}
+
+export type WorkEvaluationBreakdownRow = {
+  key: WorkEvaluationCriterion;
+  targetDisplay: string;
+  actualDisplay: string;
+  achievementPercent: number;
+  grade: WorkEvaluationGrade;
+  gradeLabel: string;
+  score: number;
+  weightPercent: number;
+  weightedScore: number;
+};
+
+export function buildWorkEvaluationBreakdown(
+  metrics: WorkEvaluationMetrics,
+  scores: WorkEvaluationScores,
+): WorkEvaluationBreakdownRow[] {
+  return criterionList().map((key) => {
+    const achievementPercent = getCriterionAchievementPercent(key, metrics);
+    const graded = achievementPercentToGradeScore(achievementPercent);
+    return {
+      key,
+      targetDisplay: formatKpiTarget(key),
+      actualDisplay: formatMetricValue(key, metrics),
+      achievementPercent: Math.round(achievementPercent * 10) / 10,
+      grade: graded.grade,
+      gradeLabel: graded.gradeLabel,
+      score: scores[key],
+      weightPercent: WORK_EVALUATION_CRITERIA[key].weightPercent,
+      weightedScore: getWeightedCriterionScore(scores, key),
+    };
+  });
+}
+
+function criterionScoreFromMetrics(
+  key: WorkEvaluationCriterion,
+  metrics: WorkEvaluationMetrics,
+): number {
+  const achievement = getCriterionAchievementPercent(key, metrics);
+  return achievementPercentToGradeScore(achievement).score;
 }
 
 export function computeAutoEvaluationScores(
-  data: AppData,
-  evaluatee: User,
-  metrics = computeEvaluationMetrics(data, evaluatee),
+  _data: AppData,
+  _evaluatee: User,
+  metrics = computeEvaluationMetrics(_data, _evaluatee),
 ): WorkEvaluationScores {
   return {
-    executionProgress: percentToScore(metrics.executionProgressPercent),
-    extensionRate: percentToScore(metrics.extensionRatePercent),
-    contractVolume: contractVolumeToScore(
-      data,
-      evaluatee,
-      metrics.contractAmountTotal,
-    ),
+    executionProgress: criterionScoreFromMetrics("executionProgress", metrics),
+    extensionRate: criterionScoreFromMetrics("extensionRate", metrics),
+    contractVolume: criterionScoreFromMetrics("contractVolume", metrics),
   };
 }
 
-export function calcOverallScore(
-  scores: WorkEvaluationScores,
-  supplementalScore?: number,
-): number {
-  const values = [...Object.values(scores)];
-  if (supplementalScore != null) {
-    values.push(clampScore(supplementalScore));
-  }
-  const sum = values.reduce((total, value) => total + value, 0);
-  return Math.round((sum / values.length) * 10) / 10;
+export function calcOverallScore(scores: WorkEvaluationScores): number {
+  const weighted =
+    scores.executionProgress * WORK_EVALUATION_WEIGHTS.executionProgress +
+    scores.extensionRate * WORK_EVALUATION_WEIGHTS.extensionRate +
+    scores.contractVolume * WORK_EVALUATION_WEIGHTS.contractVolume;
+  return Math.round(weighted * 10) / 10;
 }
 
 export function normalizeWorkEvaluationScores(
   scores: Partial<WorkEvaluationScores>,
 ): WorkEvaluationScores {
-  const clamp = (value: number | undefined) => clampScore(value ?? 3);
+  const clamp = (value: number | undefined) =>
+    clampScore(value ?? WORK_EVALUATION_SCORE_MAX / 2);
 
   return {
     executionProgress: clamp(scores.executionProgress),
@@ -138,25 +225,19 @@ export function normalizeWorkEvaluationScores(
   };
 }
 
-export function normalizeSupplementalScore(value?: number): number | undefined {
-  if (value == null || Number.isNaN(value)) return undefined;
-  return clampScore(value);
-}
-
 export function resolveWorkEvaluationDraft(
   data: AppData,
   evaluatee: User,
   saved?: WorkEvaluation,
 ) {
+  void saved;
   const metrics = computeEvaluationMetrics(data, evaluatee);
   const autoScores = computeAutoEvaluationScores(data, evaluatee, metrics);
-  const supplementalScore = saved?.supplementalScore;
 
   return {
     metrics,
     scores: autoScores,
-    supplementalScore,
-    overallScore: calcOverallScore(autoScores, supplementalScore),
+    overallScore: calcOverallScore(autoScores),
   };
 }
 
@@ -212,6 +293,110 @@ function sortEvaluatees(users: User[], evaluatorId: string): User[] {
     if (b.id === evaluatorId) return 1;
     return a.name.localeCompare(b.name, "ko");
   });
+}
+
+/** 업무평가 대상·목록 정렬 키 */
+export type WorkEvaluationSortKey =
+  | "score_desc"
+  | "score_asc"
+  | "name_asc"
+  | "name_desc"
+  | "unsaved_first"
+  | "saved_first";
+
+export const WORK_EVALUATION_SORT_OPTIONS: {
+  value: WorkEvaluationSortKey;
+  label: string;
+}[] = [
+  { value: "score_desc", label: "높은 점수순" },
+  { value: "score_asc", label: "낮은 점수순" },
+  { value: "name_asc", label: "이름순" },
+  { value: "name_desc", label: "이름 역순" },
+  { value: "unsaved_first", label: "미저장 우선" },
+  { value: "saved_first", label: "저장됨 우선" },
+];
+
+export const DEFAULT_WORK_EVALUATION_SORT: WorkEvaluationSortKey = "score_desc";
+
+/** 평가 대상 카드 정렬 — 자동 산출 점수·저장 여부·이름 기준 */
+export function sortEvaluationTargets(
+  data: AppData,
+  targets: User[],
+  sortKey: WorkEvaluationSortKey,
+  context: { period: string; evaluatorId: string },
+): User[] {
+  const rows = targets.map((user) => {
+    const saved = findWorkEvaluation(
+      data.workEvaluations ?? [],
+      context.period,
+      context.evaluatorId,
+      user.id,
+    );
+    const draft = resolveWorkEvaluationDraft(data, user, saved);
+    return {
+      user,
+      overallScore: draft.overallScore,
+      saved: Boolean(saved),
+    };
+  });
+
+  const byName = (a: (typeof rows)[0], b: (typeof rows)[0]) =>
+    a.user.name.localeCompare(b.user.name, "ko");
+
+  const sorted = [...rows].sort((a, b) => {
+    switch (sortKey) {
+      case "score_desc":
+        return b.overallScore - a.overallScore || byName(a, b);
+      case "score_asc":
+        return a.overallScore - b.overallScore || byName(a, b);
+      case "name_asc":
+        return byName(a, b);
+      case "name_desc":
+        return byName(b, a);
+      case "unsaved_first":
+        return Number(a.saved) - Number(b.saved) || b.overallScore - a.overallScore;
+      case "saved_first":
+        return Number(b.saved) - Number(a.saved) || b.overallScore - a.overallScore;
+      default:
+        return b.overallScore - a.overallScore;
+    }
+  });
+
+  return sorted.map((row) => row.user);
+}
+
+/** 저장된 평가 목록 정렬 */
+export function sortWorkEvaluations(
+  evaluations: WorkEvaluation[],
+  data: AppData,
+  sortKey: WorkEvaluationSortKey,
+): WorkEvaluation[] {
+  const rows = evaluations.map((evaluation) => ({
+    evaluation,
+    name:
+      data.users.find((user) => user.id === evaluation.evaluateeId)?.name ??
+      evaluation.evaluateeId,
+  }));
+
+  const byName = (a: (typeof rows)[0], b: (typeof rows)[0]) =>
+    a.name.localeCompare(b.name, "ko");
+
+  return [...rows]
+    .sort((a, b) => {
+      switch (sortKey) {
+        case "score_desc":
+          return b.evaluation.overallScore - a.evaluation.overallScore || byName(a, b);
+        case "score_asc":
+          return a.evaluation.overallScore - b.evaluation.overallScore || byName(a, b);
+        case "name_asc":
+          return byName(a, b);
+        case "name_desc":
+          return byName(b, a);
+        default:
+          return b.evaluation.overallScore - a.evaluation.overallScore;
+      }
+    })
+    .map((row) => row.evaluation);
 }
 
 export function findWorkEvaluation(
@@ -282,8 +467,7 @@ export function normalizeWorkEvaluationRecord(
     ...evaluation,
     metrics: draft.metrics,
     scores: draft.scores,
-    supplementalScore: evaluation.supplementalScore,
-    overallScore: calcOverallScore(draft.scores, evaluation.supplementalScore),
+    overallScore: calcOverallScore(draft.scores),
   };
 }
 
@@ -292,25 +476,51 @@ export function getEvaluationScopeLabel(role: UserRole): string {
     case "team_leader":
       return "팀원 · 본인 · 실적 자동 평가";
     case "executive":
-      return "산하 팀장 · 담당 · 자동 + 추가 평가";
+      return "산하 팀장 · 담당 · 실적 자동 평가";
     case "ceo":
-      return "전사 자동 평가 + 추가 평가";
+      return "전사 실적 자동 평가";
     default:
       return "업무평가";
   }
 }
 
 export function scoreToPercent(value: number): number {
-  return Math.round((value / 5) * 100);
+  return Math.round((value / WORK_EVALUATION_SCORE_MAX) * 100);
+}
+
+export function getWeightedCriterionScore(
+  scores: WorkEvaluationScores,
+  key: WorkEvaluationCriterion,
+): number {
+  return scores[key] * WORK_EVALUATION_WEIGHTS[key];
 }
 
 export function scoreBadgeVariant(
   score: number,
 ): "success" | "warning" | "danger" | "info" {
-  if (score >= 4.2) return "success";
-  if (score >= 3.5) return "info";
-  if (score >= 2.5) return "warning";
-  return "danger";
+  const { grade } = getOverallEvaluationGrade(score);
+  switch (grade) {
+    case "S":
+    case "A":
+      return "success";
+    case "B":
+      return "info";
+    case "C":
+      return "warning";
+    default:
+      return "danger";
+  }
+}
+
+export function formatKpiTarget(key: WorkEvaluationCriterion): string {
+  switch (key) {
+    case "executionProgress":
+      return `${WORK_EVALUATION_KPI_TARGETS.executionProgressPercent}%`;
+    case "extensionRate":
+      return `${WORK_EVALUATION_KPI_TARGETS.extensionRatePercent}%`;
+    case "contractVolume":
+      return `전사 ${WORK_EVALUATION_KPI_TARGETS.companyRevenueSharePercent}% (기여 ${Math.round(WORK_EVALUATION_STAFF_CONTRIBUTION_FACTOR * 100)}%)`;
+  }
 }
 
 /** @deprecated computeAutoEvaluationScores 사용 */
@@ -322,21 +532,22 @@ export function suggestEvaluationScores(
 }
 
 function clampScore(value: number): number {
-  return Math.min(5, Math.max(1, Math.round(value * 10) / 10));
+  return Math.min(
+    WORK_EVALUATION_SCORE_MAX,
+    Math.max(1, Math.round(value * 10) / 10),
+  );
 }
 
 export function buildWorkEvaluationInput(
   input: WorkEvaluationInput,
 ): Omit<WorkEvaluation, "id"> {
   const scores = normalizeWorkEvaluationScores(input.scores);
-  const supplementalScore = normalizeSupplementalScore(input.supplementalScore);
   const now = new Date().toISOString().slice(0, 10);
   return {
     ...input,
     scores,
     metrics: input.metrics,
-    supplementalScore,
-    overallScore: calcOverallScore(scores, supplementalScore),
+    overallScore: calcOverallScore(scores),
     createdAt: now,
     updatedAt: now,
   };
@@ -377,7 +588,7 @@ export function formatMetricValue(
     case "extensionRate":
       return `${metrics.extensionRatePercent.toFixed(1)}%`;
     case "contractVolume":
-      return formatAmount(metrics.contractAmountTotal);
+      return `${formatAmount(metrics.contractAmountTotal)} · 전사 ${metrics.companyRevenueSharePercent.toFixed(1)}% (기여 ${Math.round(WORK_EVALUATION_STAFF_CONTRIBUTION_FACTOR * 100)}%)`;
   }
 }
 

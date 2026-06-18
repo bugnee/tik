@@ -1,20 +1,24 @@
 import { cn } from "@/lib/cn";
+import { GlossaryFieldLabel, GlossaryHint } from "@/components/ui/GlossaryHint";
 import {
   formatNumberWithCommas,
   sanitizeNumericInput,
 } from "@/lib/finance";
 import { forwardRef } from "react";
 
-const fieldLabelClass = "block text-xs font-medium text-[var(--foreground-secondary)]";
+const fieldLabelClass =
+  "block text-xs font-semibold tracking-wide text-zinc-500";
 const fieldControlClass =
-  "h-10 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/30";
+  "h-10 w-full rounded-xl border border-zinc-700/80 bg-zinc-950/90 px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/30";
 const textareaControlClass =
-  "min-h-[80px] w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/30";
+  "min-h-[80px] w-full rounded-xl border border-zinc-700/80 bg-zinc-950/90 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/30";
 
 export const Input = forwardRef<
   HTMLInputElement,
   React.InputHTMLAttributes<HTMLInputElement> & {
     label?: string;
+    /** label에 마케팅 용어 설명(호버) 연결 */
+    labelGlossary?: boolean;
     error?: string;
     /** type="number"일 때 천 단위 콤마 비활성 (연도 등) */
     commaFormat?: boolean;
@@ -24,6 +28,7 @@ export const Input = forwardRef<
     {
       className,
       label,
+      labelGlossary,
       error,
       id,
       type,
@@ -65,7 +70,7 @@ export const Input = forwardRef<
       <div className="space-y-1.5">
         {label && (
           <label htmlFor={id} className={fieldLabelClass}>
-            {label}
+            {labelGlossary ? <GlossaryFieldLabel label={label} /> : label}
           </label>
         )}
         <input
@@ -139,15 +144,19 @@ Textarea.displayName = "Textarea";
 
 export function Checkbox({
   label,
+  labelGlossary,
   checked,
   onChange,
   disabled,
 }: {
   label: string;
+  labelGlossary?: boolean | string;
   checked: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
 }) {
+  const glossaryKey = typeof labelGlossary === "string" ? labelGlossary : label;
+
   return (
     <label
       className={cn(
@@ -162,7 +171,11 @@ export function Checkbox({
         onChange={(e) => onChange(e.target.checked)}
         className="rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/30 disabled:cursor-not-allowed"
       />
-      {label}
+      {labelGlossary ? (
+        <GlossaryHint text={glossaryKey}>{label}</GlossaryHint>
+      ) : (
+        label
+      )}
     </label>
   );
 }

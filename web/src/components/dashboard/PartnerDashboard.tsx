@@ -1,7 +1,7 @@
 "use client";
 
-import { PartnerDetailView } from "@/components/manage/PartnerDetailView";
 import { Card } from "@/components/ui/Card";
+import { PartnerPortalDashboard } from "@/components/partner/PartnerPortalDashboard";
 import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
 
@@ -20,5 +20,5 @@ export function PartnerDashboard() {
     );
   }
 
-  return <PartnerDetailView partnerId={partnerId} variant="portal" />;
+  return <PartnerPortalDashboard partnerId={partnerId} />;
 }

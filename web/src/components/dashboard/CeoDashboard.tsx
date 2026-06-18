@@ -23,9 +23,17 @@ import {
 } from "@/components/bonus/BonusApprovalPanel";
 import { ExpensePayoutApprovalPanel } from "@/components/finance/ExpensePayoutApprovalPanel";
 import { BonusPolicyPanel } from "@/components/bonus/BonusPolicyPanel";
+import { BonusPayrollSummaryPanel } from "@/components/bonus/BonusPayrollSummaryPanel";
 import { ContractBriefListModal } from "@/components/contracts/ContractBriefListModal";
 import { PlaceQaDashboardPanel } from "@/components/place-qa/PlaceQaDashboardPanel";
+import { StaffWorkConfirmPanel } from "@/components/work-orders/StaffWorkConfirmPanel";
 import { useData } from "@/context/DataContext";
+import {
+  useDashboardPeriod,
+  useDashboardPeriodScope,
+  useRolePeriodContracts,
+} from "@/context/DashboardPeriodContext";
+import { useRole } from "@/context/RoleContext";
 import { calculatePL, formatKRW } from "@/lib/finance";
 import { buildOrgTree, getContractCumulativeRevenue, getContractsForOrgNode, getTeamName, getUserName } from "@/lib/selectors";
 import { getContractStatusDisplay } from "@/lib/contract-lifecycle";
@@ -37,16 +45,36 @@ type CeoListModal = "extension" | "referral" | null;
 
 export function CeoDashboard() {
   const data = useData();
-  const { contracts, expenses } = data;
-  const pl = calculatePL(contracts, expenses, data.bonusPolicy, data);
-  const orgTree = useMemo(() => buildOrgTree(data), [data]);
+  const { currentUser } = useRole();
+  const { periodLabel } = useDashboardPeriod();
+  const periodScope = useDashboardPeriodScope();
+  const contracts = useRolePeriodContracts("ceo", currentUser.id);
+  const pl = useMemo(
+    () =>
+      calculatePL(contracts, periodScope.expenses, data.bonusPolicy, {
+        teams: data.teams,
+      }),
+    [contracts, periodScope.expenses, data.bonusPolicy, data.teams],
+  );
+  const totalRevenue = useMemo(
+    () => contracts.reduce((s, c) => s + periodScope.getContractFee(c), 0),
+    [contracts, periodScope],
+  );
+  const orgTree = useMemo(
+    () => buildOrgTree(data),
+    [data.contracts, data.users],
+  );
   const [selectedNode, setSelectedNode] = useState<OrgNode | null>(orgTree);
   const [listModal, setListModal] = useState<CeoListModal>(null);
 
   const nodeContracts = useMemo(
     () =>
-      selectedNode ? getContractsForOrgNode(data, selectedNode) : [],
-    [data, selectedNode],
+      selectedNode
+        ? getContractsForOrgNode(data, selectedNode).filter((c) =>
+            periodScope.contractIds.has(c.id),
+          )
+        : [],
+    [data, selectedNode, periodScope.contractIds],
   );
 
   const totalClients = contracts.length;
@@ -65,13 +93,15 @@ export function CeoDashboard() {
     <div className="space-y-6">
       <DashboardHeader
         title="대표 대시보드"
-        description={`전사 ${totalClients}개 업체 · 캐시플로우 · 조직도 실적 모니터링`}
+        description={`${periodLabel} · 전사 ${totalClients}개 업체 · 캐시플로우 · 조직도 실적 모니터링`}
       />
+
+      <StaffWorkConfirmPanel />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="총 매출 (월)"
-          value={formatKRW(pl.totalRevenue)}
+          value={formatKRW(totalRevenue)}
           subValue={`${totalClients}개 업체`}
           icon={TrendingUp}
           accent="emerald"
@@ -79,7 +109,7 @@ export function CeoDashboard() {
         <StatCard
           label="순이익 (P&L)"
           value={formatKRW(pl.netProfit)}
-          subValue="비용 · 소개비 · 파트너비 차감 후"
+          subValue="비용 · 리셀러 수수료 · 파트너비 차감 후"
           icon={Wallet}
           accent="cyan"
         />
@@ -93,9 +123,9 @@ export function CeoDashboard() {
           }
         />
         <StatCard
-          label="소개 프로모션"
+          label="리셀러 프로모션"
           value={`${referralCount}건`}
-          subValue="10% 외부 소개비"
+          subValue="10% 리셀러 수수료"
           icon={Building2}
           accent="rose"
           onValueClick={
@@ -117,8 +147,8 @@ export function CeoDashboard() {
       <ContractBriefListModal
         open={listModal === "referral"}
         onClose={() => setListModal(null)}
-        title={`소개 프로모션 고객사 (${referralCount}곳)`}
-        description="월 광고비 10% 외부 소개비"
+        title={`리셀러 프로모션 고객사 (${referralCount}곳)`}
+        description="월 광고비 10% 리셀러 수수료"
         contracts={referralContracts}
         data={data}
         showReferralFee
@@ -235,7 +265,7 @@ export function CeoDashboard() {
                         <Badge variant="success">연장</Badge>
                       )}
                       {c.hasReferralPromo && (
-                        <Badge variant="info">소개</Badge>
+                        <Badge variant="info">리셀러</Badge>
                       )}
                     </div>
                   </td>
@@ -247,6 +277,7 @@ export function CeoDashboard() {
       </Card>
 
       <DashboardBonusSection>
+        <BonusPayrollSummaryPanel />
         <BonusStatusSummary />
         <BonusPolicyPanel />
         <BonusApprovalPanel role="ceo" />

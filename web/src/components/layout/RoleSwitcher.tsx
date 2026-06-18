@@ -1,9 +1,15 @@
 "use client";
 
 import { ChevronDown, Crown, Handshake, Building2, Shield, UserCog, Users, Wallet } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
+import { RoleApprovalCountBadge } from "@/components/ui/RoleApprovalCountBadge";
 import { cn } from "@/lib/cn";
+import {
+  getRoleExecutionApprovalCountForRole,
+  ROLE_EXECUTION_APPROVAL_LABELS,
+} from "@/lib/role-execution-approval-utils";
 import { ROLE_LABELS, type UserRole } from "@/lib/types";
 
 const ROLES: {
@@ -49,9 +55,18 @@ const ROLES: {
 ];
 
 export function RoleSwitcher() {
+  const data = useData();
   const { activeRole, setActiveRole } = useRole();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  const approvalCounts = useMemo(() => {
+    const counts = {} as Record<UserRole, number>;
+    for (const { value } of ROLES) {
+      counts[value] = getRoleExecutionApprovalCountForRole(data, value);
+    }
+    return counts;
+  }, [data]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -78,6 +93,10 @@ export function RoleSwitcher() {
       >
         <current.icon className="h-4 w-4 text-emerald-400" />
         <span className="hidden sm:inline">{ROLE_LABELS[activeRole]}</span>
+        <RoleApprovalCountBadge
+          count={approvalCounts[activeRole]}
+          compact
+        />
         <span className="sm:hidden">역할</span>
         <ChevronDown
           className={cn(
@@ -119,9 +138,16 @@ export function RoleSwitcher() {
                     activeRole === value ? "text-emerald-400" : "text-zinc-500",
                   )}
                 />
-                <div>
-                  <p className="text-sm font-medium">{ROLE_LABELS[value]}</p>
-                  <p className="mt-0.5 text-xs text-zinc-500">{description}</p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium">{ROLE_LABELS[value]}</p>
+                    <RoleApprovalCountBadge count={approvalCounts[value]} compact />
+                  </div>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    {approvalCounts[value] > 0
+                      ? `${ROLE_EXECUTION_APPROVAL_LABELS[value]} ${approvalCounts[value]}건`
+                      : description}
+                  </p>
                 </div>
               </button>
             ))}

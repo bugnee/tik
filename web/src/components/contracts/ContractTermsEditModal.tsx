@@ -5,6 +5,8 @@ import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
+import { useFormDirty } from "@/hooks/useFormDirty";
 import { Checkbox, Input, Select } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
 import { LeaderManagedContractNotice } from "@/components/contracts/LeaderManagedContractNotice";
@@ -45,6 +47,11 @@ export function ContractTermsEditModal({
   const { teams, partners, taskChannels } = data;
   const [form, setForm] = useState<ContractTermsFormValues>(() =>
     contractToTermsForm(contract),
+  );
+  const formDirty = useFormDirty(
+    open,
+    `${contract.id}-${mode}`,
+    form,
   );
 
   const assignees = useMemo(
@@ -244,7 +251,7 @@ export function ContractTermsEditModal({
               onChange={(isExtension) => setForm({ ...form, isExtension })}
             />
             <Checkbox
-              label="소개 프로모션 (10%)"
+              label="리셀러 프로모션 (10%)"
               checked={form.hasReferralPromo ?? false}
               onChange={(v) =>
                 setForm({
@@ -277,7 +284,7 @@ export function ContractTermsEditModal({
         {!canManageContractTerms &&
           (form.isExtension || form.hasReferralPromo) && (
             <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 text-xs text-zinc-500">
-              연장/소개:{" "}
+              연장/리셀러:{" "}
               {form.isExtension && <Badge variant="success">연장</Badge>}
               {form.hasReferralPromo && (
                 <Badge variant="info">
@@ -292,13 +299,13 @@ export function ContractTermsEditModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             취소
           </Button>
-          <Button type="submit">
+          <SaveButton type="submit" dirty={formDirty}>
             {mode === "recontract"
               ? "재계약 적용"
               : mode === "renewal"
                 ? "재계약 조건 적용"
                 : "조건 저장"}
-          </Button>
+          </SaveButton>
         </div>
       </form>
     </Modal>

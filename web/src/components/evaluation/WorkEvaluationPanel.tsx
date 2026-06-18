@@ -4,30 +4,36 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ClipboardCheck, Star } from "lucide-react";
 import { useData } from "@/context/DataContext";
+import { useDashboardPeriod } from "@/context/DashboardPeriodContext";
 import { useRole } from "@/context/RoleContext";
+import { evaluationPeriodFromDashboard } from "@/lib/dashboard-period-utils";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { Textarea } from "@/components/ui/FormFields";
+import { Select, Textarea } from "@/components/ui/FormFields";
 import {
+  buildWorkEvaluationBreakdown,
   calcOverallScore,
-  canAddSupplementalEvaluation,
   canSubmitWorkEvaluation,
   canViewWorkEvaluations,
   criterionList,
-  currentEvaluationPeriod,
   findWorkEvaluation,
   formatEvaluateeMeta,
   formatMetricValue,
+  getCriterionAchievementPercent,
   getEvaluationScopeLabel,
   getEvaluationTargets,
+  getOverallEvaluationGrade,
   getVisibleWorkEvaluations,
-  normalizeSupplementalScore,
   resolveWorkEvaluationDraft,
   scoreBadgeVariant,
-  scoreToPercent,
+  sortEvaluationTargets,
+  sortWorkEvaluations,
+  WORK_EVALUATION_SORT_OPTIONS,
+  DEFAULT_WORK_EVALUATION_SORT,
+  type WorkEvaluationSortKey,
 } from "@/lib/work-evaluation-utils";
-import { WORK_EVALUATION_CRITERIA } from "@/lib/types";
+import { WORK_EVALUATION_CRITERIA, WORK_EVALUATION_SCORE_MAX } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
 type WorkEvaluationPanelProps = {
@@ -42,8 +48,8 @@ export function WorkEvaluationPanel({
   const data = useData();
   const { currentUser, activeRole } = useRole();
   const { upsertWorkEvaluation } = data;
-  const period = currentEvaluationPeriod();
-  const canSupplemental = canAddSupplementalEvaluation(activeRole);
+  const { periodFilter } = useDashboardPeriod();
+  const period = evaluationPeriodFromDashboard(periodFilter);
 
   const canSubmit = canSubmitWorkEvaluation(activeRole);
   const canView = canViewWorkEvaluations(activeRole);
@@ -103,9 +109,8 @@ export function WorkEvaluationPanel({
         <EvaluatorView
           compact={compact}
           period={period}
-          targets={targets.slice(0, compact ? 3 : targets.length)}
+          targets={targets}
           pendingCount={pendingCount}
-          canSupplemental={canSupplemental}
           onSave={(evaluateeId, draft, comment) =>
             upsertWorkEvaluation({
               period,
@@ -113,7 +118,6 @@ export function WorkEvaluationPanel({
               evaluatorId: currentUser.id,
               scores: draft.scores,
               metrics: draft.metrics,
-              supplementalScore: draft.supplementalScore,
               comment,
             })
           }
@@ -125,19 +129,51 @@ export function WorkEvaluationPanel({
   );
 }
 
+function WorkEvaluationSortSelect({
+  value,
+  onChange,
+  includeSaveSort = true,
+  className,
+}: {
+  value: WorkEvaluationSortKey;
+  onChange: (value: WorkEvaluationSortKey) => void;
+  includeSaveSort?: boolean;
+  className?: string;
+}) {
+  const options = includeSaveSort
+    ? WORK_EVALUATION_SORT_OPTIONS
+    : WORK_EVALUATION_SORT_OPTIONS.filter(
+        (option) =>
+          option.value !== "unsaved_first" && option.value !== "saved_first",
+      );
+
+  return (
+    <Select
+      value={value}
+      onChange={(event) => onChange(event.target.value as WorkEvaluationSortKey)}
+      aria-label="정렬"
+      className={cn("w-auto min-w-[132px] py-1.5 text-xs", className)}
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </Select>
+  );
+}
+
 function EvaluatorView({
   compact,
   period,
   targets,
   pendingCount,
-  canSupplemental,
   onSave,
 }: {
   compact?: boolean;
   period: string;
   targets: ReturnType<typeof getEvaluationTargets>;
   pendingCount: number;
-  canSupplemental: boolean;
   onSave: (
     evaluateeId: string,
     draft: ReturnType<typeof resolveWorkEvaluationDraft>,
@@ -146,9 +182,29 @@ function EvaluatorView({
 }) {
   const data = useData();
   const { currentUser } = useRole();
-  const [selectedId, setSelectedId] = useState(targets[0]?.id ?? "");
+  const [sortKey, setSortKey] = useState<WorkEvaluationSortKey>(
+    DEFAULT_WORK_EVALUATION_SORT,
+  );
 
-  const selected = targets.find((target) => target.id === selectedId) ?? targets[0];
+  const sortedTargets = useMemo(
+    () =>
+      sortEvaluationTargets(data, targets, sortKey, {
+        period,
+        evaluatorId: currentUser.id,
+      }),
+    [data, targets, sortKey, period, currentUser.id],
+  );
+
+  const displayTargets = compact
+    ? sortedTargets.slice(0, 3)
+    : sortedTargets;
+
+  const [selectedId, setSelectedId] = useState(displayTargets[0]?.id ?? "");
+
+  const selected =
+    displayTargets.find((target) => target.id === selectedId) ??
+    sortedTargets.find((target) => target.id === selectedId) ??
+    displayTargets[0];
   const existing = selected
     ? findWorkEvaluation(
         data.workEvaluations ?? [],
@@ -162,14 +218,11 @@ function EvaluatorView({
     ? resolveWorkEvaluationDraft(data, selected, existing)
     : undefined;
 
-  const [supplementalScore, setSupplementalScore] = useState<number | undefined>(
-    existing?.supplementalScore,
-  );
   const [comment, setComment] = useState(existing?.comment ?? "");
 
   function selectTarget(targetId: string) {
     setSelectedId(targetId);
-    const target = targets.find((item) => item.id === targetId);
+    const target = sortedTargets.find((item) => item.id === targetId);
     if (!target) return;
     const saved = findWorkEvaluation(
       data.workEvaluations ?? [],
@@ -177,21 +230,16 @@ function EvaluatorView({
       currentUser.id,
       target.id,
     );
-    setSupplementalScore(saved?.supplementalScore);
     setComment(saved?.comment ?? "");
   }
 
   function handleSave() {
     if (!selected || !draft) return;
-    const normalizedSupplemental = canSupplemental
-      ? normalizeSupplementalScore(supplementalScore)
-      : undefined;
     onSave(
       selected.id,
       {
         ...draft,
-        supplementalScore: normalizedSupplemental,
-        overallScore: calcOverallScore(draft.scores, normalizedSupplemental),
+        overallScore: calcOverallScore(draft.scores),
       },
       comment.trim() || undefined,
     );
@@ -205,30 +253,36 @@ function EvaluatorView({
     );
   }
 
-  const displayOverall = calcOverallScore(
-    draft.scores,
-    canSupplemental ? supplementalScore : undefined,
-  );
+  const displayOverall = calcOverallScore(draft.scores);
+  const overallGrade = getOverallEvaluationGrade(displayOverall);
+  const evaluationDirty = !existing || comment !== (existing.comment ?? "");
 
   return (
     <div className="space-y-4">
-      {!compact && (
-        <p className="text-xs text-zinc-500">
-          실행 진행율 · 재계약율 · 계약금액 자동 산출 · 대상 {targets.length}명 ·
-          미저장 {pendingCount}명
-        </p>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {!compact && (
+          <p className="text-xs text-zinc-500">
+            실행 50% · 재계약 25% · 계약금액(전사 비중·기여 70%) 25% · 대상{" "}
+            {targets.length}명 · 미저장 {pendingCount}명
+          </p>
+        )}
+        <WorkEvaluationSortSelect
+          value={sortKey}
+          onChange={setSortKey}
+          className={compact ? "" : "ml-auto"}
+        />
+      </div>
 
       <div className="flex flex-wrap gap-2">
-        {targets.map((target) => {
-          const done = Boolean(
-            findWorkEvaluation(
-              data.workEvaluations ?? [],
-              period,
-              currentUser.id,
-              target.id,
-            ),
+        {displayTargets.map((target) => {
+          const saved = findWorkEvaluation(
+            data.workEvaluations ?? [],
+            period,
+            currentUser.id,
+            target.id,
           );
+          const targetDraft = resolveWorkEvaluationDraft(data, target, saved);
+          const done = Boolean(saved);
           return (
             <button
               key={target.id}
@@ -241,8 +295,13 @@ function EvaluatorView({
                   : "border-zinc-800 bg-zinc-950/40 text-zinc-300 hover:border-zinc-700",
               )}
             >
-              <span className="font-medium">
-                {target.id === currentUser.id ? `${target.name} (본인)` : target.name}
+              <span className="flex items-center justify-between gap-2">
+                <span className="font-medium">
+                  {target.id === currentUser.id ? `${target.name} (본인)` : target.name}
+                </span>
+                <span className="font-mono text-[11px] text-emerald-400/90">
+                  {targetDraft.overallScore.toFixed(1)}점
+                </span>
               </span>
               <span className="mt-0.5 block text-[11px] text-zinc-500">
                 {formatEvaluateeMeta(data, target)}
@@ -257,37 +316,30 @@ function EvaluatorView({
         })}
       </div>
 
-      <AutoScorePanel draft={draft} overall={displayOverall} />
-
-      {canSupplemental && (
-        <SupplementalScorePanel
-          value={supplementalScore}
-          onChange={setSupplementalScore}
-        />
-      )}
+      <AutoScorePanel
+        draft={draft}
+        overall={displayOverall}
+        overallGrade={overallGrade}
+      />
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
         <Textarea
           label="코멘트"
           value={comment}
           onChange={(event) => setComment(event.target.value)}
-          placeholder={
-            canSupplemental
-              ? "추가 평가 근거 · 강점 · 보완점"
-              : "자동 평가 확인 메모"
-          }
+          placeholder="자동 평가 확인 메모"
         />
         <div className="mt-4 flex justify-end">
-          <Button type="button" onClick={handleSave}>
+          <SaveButton type="button" dirty={evaluationDirty} onClick={handleSave}>
             {existing ? "평가 갱신" : "평가 저장"}
-          </Button>
+          </SaveButton>
         </div>
       </div>
 
-      {compact && targets.length > 3 && (
+      {compact && sortedTargets.length > 3 && (
         <p className="text-center text-xs text-zinc-500">
           <Link href="/evaluations" className="text-emerald-400 hover:underline">
-            +{targets.length - 3}명 더 보기
+            +{sortedTargets.length - 3}명 더 보기
           </Link>
         </p>
       )}
@@ -298,31 +350,41 @@ function EvaluatorView({
 function AutoScorePanel({
   draft,
   overall,
+  overallGrade,
 }: {
   draft: ReturnType<typeof resolveWorkEvaluationDraft>;
   overall: number;
+  overallGrade: ReturnType<typeof getOverallEvaluationGrade>;
 }) {
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <ClipboardCheck className="h-4 w-4 text-emerald-400" />
-          <p className="text-sm font-medium text-zinc-200">실적 자동 평가</p>
-          <Badge variant={scoreBadgeVariant(overall)}>
-            종합 {overall.toFixed(1)} / 5
-          </Badge>
-        </div>
-        <Badge variant="info">자동 산출</Badge>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <ClipboardCheck className="h-4 w-4 text-emerald-400" />
+        <p className="text-sm font-medium text-zinc-200">실적 자동 평가</p>
+        <Badge variant={scoreBadgeVariant(overall)}>
+          {overallGrade.grade} · {overallGrade.label}
+        </Badge>
+        <Badge variant="info">
+          종합 {overall.toFixed(1)} / {WORK_EVALUATION_SCORE_MAX}
+        </Badge>
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
-        {criterionList().map((key) => (
+        {criterionList().map((key) => {
+          const achievement = getCriterionAchievementPercent(key, draft.metrics);
+          const row = buildWorkEvaluationBreakdown(draft.metrics, draft.scores).find(
+            (item) => item.key === key,
+          );
+          return (
           <div
             key={key}
             className="rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-3"
           >
             <p className="text-sm font-medium text-zinc-200">
               {WORK_EVALUATION_CRITERIA[key].label}
+              <span className="ml-1.5 text-[11px] font-normal text-amber-400/90">
+                {WORK_EVALUATION_CRITERIA[key].weightPercent}%
+              </span>
             </p>
             <p className="text-[11px] text-zinc-500">
               {WORK_EVALUATION_CRITERIA[key].description}
@@ -330,62 +392,111 @@ function AutoScorePanel({
             <p className="mt-2 text-xs text-cyan-400/90">
               실적 {formatMetricValue(key, draft.metrics)}
             </p>
-            <p className="mt-2 inline-flex items-center gap-1 font-mono text-lg text-emerald-400">
-              <Star className="h-4 w-4" />
-              {draft.scores[key].toFixed(1)}
-              <span className="text-xs text-zinc-500">
-                ({scoreToPercent(draft.scores[key])}%)
+            <p className="mt-1 text-[11px] text-zinc-500">
+              달성률 {achievement.toFixed(1)}%
+            </p>
+            <p className="mt-2 inline-flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 font-mono text-lg text-emerald-400">
+                <Star className="h-4 w-4" />
+                {draft.scores[key].toFixed(1)}
+                <span className="text-sm text-zinc-400">
+                  / {WORK_EVALUATION_SCORE_MAX}
+                </span>
               </span>
+              {row && (
+                <Badge variant={scoreBadgeVariant(row.score)}>
+                  {row.grade} · {row.gradeLabel}
+                </Badge>
+              )}
             </p>
           </div>
-        ))}
+          );
+        })}
       </div>
+
+      <AutoEvaluationBreakdown
+        draft={draft}
+        overall={overall}
+        overallGrade={overallGrade}
+      />
     </div>
   );
 }
 
-function SupplementalScorePanel({
-  value,
-  onChange,
+function AutoEvaluationBreakdown({
+  draft,
+  overall,
+  overallGrade,
 }: {
-  value?: number;
-  onChange: (value: number | undefined) => void;
+  draft: ReturnType<typeof resolveWorkEvaluationDraft>;
+  overall: number;
+  overallGrade: ReturnType<typeof getOverallEvaluationGrade>;
 }) {
-  const score = value ?? 3;
+  const rows = buildWorkEvaluationBreakdown(draft.metrics, draft.scores);
 
   return (
-    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div>
-          <p className="text-sm font-medium text-amber-200">추가 평가 (임원·대표)</p>
-          <p className="text-[11px] text-zinc-500">
-            자동 평가와 별도 · 1~5점 (선택)
-          </p>
-        </div>
-        <span className="inline-flex items-center gap-1 font-mono text-sm text-amber-300">
-          <Star className="h-3.5 w-3.5" />
-          {score.toFixed(1)}
-        </span>
-      </div>
-      <input
-        type="range"
-        min={1}
-        max={5}
-        step={0.5}
-        value={score}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full accent-amber-500"
-      />
-      <div className="mt-2 flex justify-between text-[10px] text-zinc-600">
-        <span>1</span>
-        <button
-          type="button"
-          className="text-zinc-500 hover:text-zinc-300"
-          onClick={() => onChange(undefined)}
-        >
-          추가 평가 없음
-        </button>
-        <span>5</span>
+    <div className="mt-4 space-y-2 border-t border-zinc-800/80 pt-4">
+      <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+        자동평가 산출 내역
+      </p>
+      <div className="overflow-x-auto rounded-lg border border-zinc-800/80">
+        <table className="w-full min-w-[720px] text-xs">
+          <thead>
+            <tr className="border-b border-zinc-800 bg-zinc-900/50 text-left text-zinc-500">
+              <th className="px-3 py-2 font-medium">항목</th>
+              <th className="px-3 py-2 font-medium">KPI 목표</th>
+              <th className="px-3 py-2 font-medium">실적</th>
+              <th className="px-3 py-2 font-medium">달성률</th>
+              <th className="px-3 py-2 font-medium">등급</th>
+              <th className="px-3 py-2 font-medium">환산 점수</th>
+              <th className="px-3 py-2 font-medium">가중치</th>
+              <th className="px-3 py-2 font-medium text-right">기여 점수</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key} className="border-b border-zinc-800/60 text-zinc-300">
+                <td className="px-3 py-2.5">
+                  {WORK_EVALUATION_CRITERIA[row.key].label}
+                </td>
+                <td className="px-3 py-2.5 text-zinc-400">{row.targetDisplay}</td>
+                <td className="px-3 py-2.5 text-cyan-400/90">{row.actualDisplay}</td>
+                <td className="px-3 py-2.5 font-mono">
+                  {row.achievementPercent.toFixed(1)}%
+                </td>
+                <td className="px-3 py-2.5">
+                  <Badge variant={scoreBadgeVariant(row.score)}>
+                    {row.grade} · {row.gradeLabel}
+                  </Badge>
+                </td>
+                <td className="px-3 py-2.5 font-mono">
+                  {row.score.toFixed(1)} / {WORK_EVALUATION_SCORE_MAX}
+                </td>
+                <td className="px-3 py-2.5">{row.weightPercent}%</td>
+                <td className="px-3 py-2.5 text-right font-mono text-emerald-400">
+                  {row.weightedScore.toFixed(2)}
+                </td>
+              </tr>
+            ))}
+            <tr className="bg-zinc-900/40 font-medium text-zinc-100">
+              <td className="px-3 py-2.5" colSpan={4}>
+                종합 (가중 합산)
+              </td>
+              <td className="px-3 py-2.5">
+                <Badge variant={scoreBadgeVariant(overall)}>
+                  {overallGrade.grade} · {overallGrade.label}
+                </Badge>
+              </td>
+              <td className="px-3 py-2.5 font-mono text-emerald-300">
+                {overall.toFixed(1)} / {WORK_EVALUATION_SCORE_MAX}
+              </td>
+              <td className="px-3 py-2.5">100%</td>
+              <td className="px-3 py-2.5 text-right font-mono text-emerald-300">
+                {overall.toFixed(1)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -397,6 +508,14 @@ function ViewerSummary({
   evaluations: ReturnType<typeof getVisibleWorkEvaluations>;
 }) {
   const data = useData();
+  const [sortKey, setSortKey] = useState<WorkEvaluationSortKey>(
+    DEFAULT_WORK_EVALUATION_SORT,
+  );
+
+  const sortedEvaluations = useMemo(
+    () => sortWorkEvaluations(evaluations, data, sortKey),
+    [evaluations, data, sortKey],
+  );
 
   if (evaluations.length === 0) {
     return (
@@ -407,19 +526,28 @@ function ViewerSummary({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] text-sm">
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <WorkEvaluationSortSelect
+          value={sortKey}
+          onChange={setSortKey}
+          includeSaveSort={false}
+        />
+      </div>
+      <div className="overflow-x-auto">
+      <table className="w-full min-w-[720px] text-sm">
         <thead>
           <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
             <th className="px-3 py-2 font-medium">피평가자</th>
             <th className="px-3 py-2 font-medium">평가자</th>
-            <th className="px-3 py-2 font-medium">자동 실적</th>
-            <th className="px-3 py-2 font-medium">추가</th>
+            <th className="px-3 py-2 font-medium">자동평가 내역</th>
             <th className="px-3 py-2 font-medium">종합</th>
           </tr>
         </thead>
         <tbody>
-          {evaluations.map((evaluation) => (
+          {sortedEvaluations.map((evaluation) => {
+            const grade = getOverallEvaluationGrade(evaluation.overallScore);
+            return (
             <tr key={evaluation.id} className="border-b border-zinc-800/60">
               <td className="px-3 py-2.5 text-zinc-200">
                 {data.users.find((user) => user.id === evaluation.evaluateeId)?.name ??
@@ -429,22 +557,37 @@ function ViewerSummary({
                 {data.users.find((user) => user.id === evaluation.evaluatorId)?.name ??
                   evaluation.evaluatorId}
               </td>
-              <td className="px-3 py-2.5 text-xs text-zinc-500">
-                진행 {evaluation.metrics.executionProgressPercent.toFixed(0)}% ·
-                연장 {evaluation.metrics.extensionRatePercent.toFixed(0)}%
-              </td>
-              <td className="px-3 py-2.5 text-zinc-400">
-                {evaluation.supplementalScore?.toFixed(1) ?? "-"}
+              <td className="px-3 py-2.5 text-xs text-zinc-400">
+                <div className="space-y-1">
+                  {criterionList().map((key) => (
+                    <p key={key}>
+                      {WORK_EVALUATION_CRITERIA[key].label}{" "}
+                      <span className="text-cyan-400/90">
+                        {formatMetricValue(key, evaluation.metrics)}
+                      </span>
+                      {" → "}
+                      <span className="font-mono text-emerald-400">
+                        {evaluation.scores[key].toFixed(1)}
+                      </span>
+                      <span className="text-zinc-500">
+                        /{WORK_EVALUATION_SCORE_MAX}
+                      </span>
+                    </p>
+                  ))}
+                </div>
               </td>
               <td className="px-3 py-2.5">
                 <Badge variant={scoreBadgeVariant(evaluation.overallScore)}>
-                  {evaluation.overallScore.toFixed(1)}
+                  {grade.grade} · {evaluation.overallScore.toFixed(1)} /{" "}
+                  {WORK_EVALUATION_SCORE_MAX}
                 </Badge>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -453,7 +596,6 @@ export function WorkEvaluationPageContent() {
   const { activeRole } = useRole();
   const canView = canViewWorkEvaluations(activeRole);
   const canSubmit = canSubmitWorkEvaluation(activeRole);
-  const canSupplemental = canAddSupplementalEvaluation(activeRole);
 
   if (!canView) {
     return (
@@ -470,11 +612,9 @@ export function WorkEvaluationPageContent() {
           업무평가
         </h1>
         <p className="mt-1 text-sm text-zinc-500">
-          {canSupplemental
-            ? "실행 진행율 · 재계약율 · 계약금액 자동 평가 + 임원·대표 추가 평가(1~5점)"
-            : canSubmit
-              ? `${getEvaluationScopeLabel(activeRole)} · 실적 자동 산출 결과를 저장합니다.`
-              : "전사 업무평가 현황을 조회합니다."}
+          {canSubmit
+            ? `${getEvaluationScopeLabel(activeRole)} · 실적 자동 산출 결과를 저장합니다.`
+            : "전사 업무평가 현황을 조회합니다."}
         </p>
       </div>
       <WorkEvaluationPanel compact={false} showHeaderLink={false} />
