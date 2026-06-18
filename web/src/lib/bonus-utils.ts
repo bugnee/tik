@@ -6,12 +6,25 @@ import type {
 } from "./types";
 import { isLeaderManagedContract } from "./contract-access-utils";
 import {
+  BONUS_AMOUNT_TAX_LABEL,
   BONUS_ELIGIBILITY_MIN_RENEWAL_MONTHS,
-  BONUS_PAYMENT_DELAY_DAYS,
+  BONUS_MONTHLY_CLOSING_DAY,
+  BONUS_PAYMENT_DELAY_LABEL,
+  BONUS_PAYMENT_DELAY_MONTHS,
   BONUS_PAY_POLICY_NOTICE,
+  BONUS_PAY_SCHEDULE_SUMMARY,
+  BONUS_SALARY_PAY_DAY,
 } from "./types";
 
-export { BONUS_PAY_POLICY_NOTICE, BONUS_PAYMENT_DELAY_DAYS };
+export {
+  BONUS_AMOUNT_TAX_LABEL,
+  BONUS_MONTHLY_CLOSING_DAY,
+  BONUS_PAY_POLICY_NOTICE,
+  BONUS_PAY_SCHEDULE_SUMMARY,
+  BONUS_PAYMENT_DELAY_LABEL,
+  BONUS_PAYMENT_DELAY_MONTHS,
+  BONUS_SALARY_PAY_DAY,
+};
 
 export function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T12:00:00`);
@@ -19,12 +32,46 @@ export function addDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+export function addMonths(iso: string, months: number): string {
+  const d = new Date(`${iso}T12:00:00`);
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
+}
+
 export function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export function calcBonusSettlementPeriod(clientDepositDate: string): string {
+  return addMonths(clientDepositDate, BONUS_PAYMENT_DELAY_MONTHS).slice(0, 7);
+}
+
+function dateInSettlementPeriod(period: string, day: number): string {
+  const [year, month] = period.split("-").map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  const safeDay = Math.min(day, lastDay);
+  return `${period}-${String(safeDay).padStart(2, "0")}`;
+}
+
+export function calcBonusClosingDeadline(clientDepositDate: string): string {
+  return dateInSettlementPeriod(
+    calcBonusSettlementPeriod(clientDepositDate),
+    BONUS_MONTHLY_CLOSING_DAY,
+  );
+}
+
 export function calcScheduledPayDate(clientDepositDate: string): string {
-  return addDays(clientDepositDate, BONUS_PAYMENT_DELAY_DAYS);
+  return dateInSettlementPeriod(
+    calcBonusSettlementPeriod(clientDepositDate),
+    BONUS_SALARY_PAY_DAY,
+  );
+}
+
+export function isBonusClosingPassed(
+  closingDeadline: string,
+  referenceDate = todayISO(),
+): boolean {
+  return referenceDate > closingDeadline;
 }
 
 export function isBonusPayDue(
@@ -34,31 +81,58 @@ export function isBonusPayDue(
   return scheduledPayDate <= referenceDate;
 }
 
+export function daysUntilDate(
+  targetDate: string,
+  referenceDate = todayISO(),
+): number {
+  const ref = new Date(`${referenceDate}T12:00:00`);
+  const target = new Date(`${targetDate}T12:00:00`);
+  return Math.ceil((target.getTime() - ref.getTime()) / 86_400_000);
+}
+
 export function daysUntilScheduledPay(
   scheduledPayDate: string,
   referenceDate = todayISO(),
 ): number {
-  const ref = new Date(`${referenceDate}T12:00:00`);
-  const target = new Date(`${scheduledPayDate}T12:00:00`);
-  return Math.ceil((target.getTime() - ref.getTime()) / 86_400_000);
+  return daysUntilDate(scheduledPayDate, referenceDate);
+}
+
+export function formatBonusKRW(amount: number): string {
+  return `${new Intl.NumberFormat("ko-KR", {
+    style: "currency",
+    currency: "KRW",
+    maximumFractionDigits: 0,
+  }).format(amount)} ${BONUS_AMOUNT_TAX_LABEL}`;
 }
 
 export function formatBonusPayScheduleLabel(
   clientDepositDate: string,
   scheduledPayDate: string,
+  closingDeadline?: string,
 ): string {
-  return `업체 입금 ${clientDepositDate} → 지급 예정 ${scheduledPayDate}`;
+  const closing =
+    closingDeadline ?? calcBonusClosingDeadline(clientDepositDate);
+  return `업체 입금 ${clientDepositDate} → 마감 ${closing} → 급여 합산 ${scheduledPayDate}`;
 }
 
 export function getBonusPayStatusMessage(
   scheduledPayDate: string,
+  closingDeadline?: string,
   referenceDate = todayISO(),
 ): string {
-  if (isBonusPayDue(scheduledPayDate, referenceDate)) {
-    return `지급 가능 (예정일 ${scheduledPayDate})`;
+  const closing = closingDeadline ?? scheduledPayDate;
+
+  if (!isBonusClosingPassed(closing, referenceDate)) {
+    const daysLeft = daysUntilDate(closing, referenceDate);
+    return `마감 ${closing} (D-${daysLeft}) · 급여 합산 ${scheduledPayDate}`;
   }
-  const daysLeft = daysUntilScheduledPay(scheduledPayDate, referenceDate);
-  return `지급 예정 ${scheduledPayDate} (D-${daysLeft})`;
+
+  if (isBonusPayDue(scheduledPayDate, referenceDate)) {
+    return `급여 합산 지급 가능 (${scheduledPayDate})`;
+  }
+
+  const daysLeft = daysUntilDate(scheduledPayDate, referenceDate);
+  return `급여 합산 지급 예정 ${scheduledPayDate} (D-${daysLeft})`;
 }
 
 export function currentPeriod(): string {
@@ -68,22 +142,28 @@ export function currentPeriod(): string {
 
 export function isBonusEligible(contract: Contract): boolean {
   return (
-    contract.isExtension &&
     contract.status === "active" &&
+    contract.isExtension &&
     contract.renewalMonthCount >= BONUS_ELIGIBILITY_MIN_RENEWAL_MONTHS
   );
 }
 
 export function getEligibilityMessage(contract: Contract): string {
-  if (!contract.isExtension) return "연장(재계약) 계약만 성과급 대상입니다.";
+  if (contract.status === "terminated") {
+    return "계약 해지됨 · 재계약 후 새 시작일 기준 3개월 경과 시 연장 적용, 4월차부터 성과급(세전) 지급 대상";
+  }
+  if (!contract.isExtension) {
+    return "연장(재계약) 계약만 성과급 대상입니다. 최초 계약 3개월 경과 후 연장 전환 필요";
+  }
   if (contract.renewalMonthCount < BONUS_ELIGIBILITY_MIN_RENEWAL_MONTHS) {
     return `재계약 3개월 이상 후 ${BONUS_ELIGIBILITY_MIN_RENEWAL_MONTHS}월차부터 지급 가능 (현재 ${contract.renewalMonthCount}월차)`;
   }
   if (!contract.lastClientDepositDate) {
     return "업체 입금일 등록 후 지급 신청 가능";
   }
+  const closing = calcBonusClosingDeadline(contract.lastClientDepositDate);
   const scheduled = calcScheduledPayDate(contract.lastClientDepositDate);
-  return `지급 신청 가능 · 예정 지급일 ${scheduled} (입금 + ${BONUS_PAYMENT_DELAY_DAYS}일)`;
+  return `지급 신청 가능 · 마감 ${closing} · 급여 합산 ${scheduled} (${BONUS_PAY_SCHEDULE_SUMMARY})`;
 }
 
 export function canRequestBonus(contract: Contract): boolean {
@@ -245,6 +325,7 @@ export function createBonusPaymentFromContract(
   const amounts = calcBonusAmounts(contract, policy, data);
   const today = todayISO();
   const clientDepositDate = contract.lastClientDepositDate!;
+  const closingDeadline = calcBonusClosingDeadline(clientDepositDate);
   const scheduledPayDate = calcScheduledPayDate(clientDepositDate);
   const assignee = data.users.find((u) => u.id === contract.assignedStaffId);
   const initialStage =
@@ -259,6 +340,7 @@ export function createBonusPaymentFromContract(
     ...amounts,
     renewalMonthAtRequest: contract.renewalMonthCount,
     clientDepositDate,
+    closingDeadline,
     scheduledPayDate,
     stage: initialStage,
     requestedBy,
@@ -299,15 +381,21 @@ export function enrichBonusPayment(data: AppData, payment: BonusPayment) {
     ? data.teams.find((t) => t.id === contract.teamId)
     : undefined;
   const clientDepositDate =
-    payment.clientDepositDate ?? contract?.lastClientDepositDate ?? payment.createdAt;
+    payment.clientDepositDate ??
+    contract?.lastClientDepositDate ??
+    payment.createdAt;
+  const closingDeadline =
+    payment.closingDeadline ?? calcBonusClosingDeadline(clientDepositDate);
   const scheduledPayDate =
     payment.scheduledPayDate ?? calcScheduledPayDate(clientDepositDate);
   const isPayDue = isBonusPayDue(scheduledPayDate);
   const daysUntilPay = daysUntilScheduledPay(scheduledPayDate);
+  const isClosingPassed = isBonusClosingPassed(closingDeadline);
 
   return {
     ...payment,
     clientDepositDate,
+    closingDeadline,
     scheduledPayDate,
     clientName: contract?.clientName ?? "-",
     staffName: staff?.name ?? "-",
@@ -315,8 +403,12 @@ export function enrichBonusPayment(data: AppData, payment: BonusPayment) {
     monthlyFee: contract?.monthlyFee ?? 0,
     renewalMonthCount: contract?.renewalMonthCount ?? 0,
     isPayDue,
+    isClosingPassed,
     daysUntilPay,
-    payStatusMessage: getBonusPayStatusMessage(scheduledPayDate),
+    payStatusMessage: getBonusPayStatusMessage(
+      scheduledPayDate,
+      closingDeadline,
+    ),
   };
 }
 

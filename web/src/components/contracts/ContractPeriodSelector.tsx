@@ -2,6 +2,8 @@
 
 import { Select } from "@/components/ui/FormFields";
 import { cn } from "@/lib/cn";
+import { getTabButtonClass } from "@/lib/tab-ui-utils";
+import type { TaskChannelAccent } from "@/lib/types";
 import {
   CONTRACT_PERIOD_MODE_LABELS,
   getBillingCycles,
@@ -13,6 +15,12 @@ import {
 import type { Contract, ContractRecord } from "@/lib/types";
 
 const MODES: ContractPeriodViewMode[] = ["cycle30", "month", "year"];
+
+const PERIOD_VIEW_ACCENTS: Record<ContractPeriodViewMode, TaskChannelAccent> = {
+  cycle30: "cyan",
+  month: "emerald",
+  year: "amber",
+};
 
 type ContractPeriodSelectorProps = {
   contract: Contract;
@@ -44,32 +52,33 @@ export function ContractPeriodSelector({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 sm:p-4",
+        "flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--card-muted)] p-3 sm:p-4",
         className,
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+        <span className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
           계약 기간 조회
         </span>
-        <div className="flex flex-wrap gap-1 rounded-lg border border-zinc-800 bg-zinc-900/60 p-1">
+        <div className="flex flex-wrap gap-1 rounded-lg border border-[var(--border)] bg-[var(--card-muted)] p-1">
           {MODES.map((mode) => (
             <button
               key={mode}
               type="button"
               onClick={() => setMode(mode)}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                value.mode === mode
-                  ? "bg-cyan-500/15 text-cyan-300 ring-1 ring-cyan-500/30"
-                  : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300",
+              className={getTabButtonClass(
+                PERIOD_VIEW_ACCENTS[mode],
+                value.mode === mode,
+                "rounded-md px-3 py-1.5 text-xs font-medium",
               )}
             >
               {CONTRACT_PERIOD_MODE_LABELS[mode]}
             </button>
           ))}
         </div>
-        <span className="ml-auto text-xs text-cyan-400/90">{resolved.label}</span>
+        <span className="ml-auto text-xs text-cyan-600 dark:text-cyan-400/90">
+          {resolved.label}
+        </span>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">

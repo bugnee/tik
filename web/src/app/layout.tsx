@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/layout/Providers";
+import { ThemeInitScript } from "@/components/layout/ThemeInitScript";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -35,6 +36,7 @@ export default function RootLayout({
     <html
       lang="ko"
       className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
+      suppressHydrationWarning
     >
       <head>
         <link
@@ -45,9 +47,10 @@ export default function RootLayout({
         />
       </head>
       <body
-        className="min-h-full bg-zinc-950 text-zinc-50"
+        className="min-h-full bg-[var(--background)] text-[var(--foreground)]"
         style={{ fontFamily: "Pretendard Variable, Pretendard, sans-serif" }}
       >
+        <ThemeInitScript />
         <Providers>{children}</Providers>
       </body>
     </html>

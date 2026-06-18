@@ -48,7 +48,7 @@ export function PlaceQaPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="플레이스 · 문의 관리"
+        title="고객사 Q&A"
         description={`고객사 질문 · ${getQaScopeHint(activeRole)}`}
         action={
           <Link

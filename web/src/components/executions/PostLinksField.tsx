@@ -1,10 +1,41 @@
 "use client";
 
 import { Link2, Plus, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/FormFields";
-import { createEmptyPostLink, getValidPostLinks, migratePostLinks, todayISO } from "@/lib/execution-utils";
+import { cn } from "@/lib/cn";
+import {
+  createEmptyPostLink,
+  DEADLINE_STAGE_DESC,
+  DEADLINE_STAGE_STYLES,
+  getDeadlineStage,
+  getDeadlineStageBadgeVariant,
+  getDeadlineStageLabel,
+  getValidPostLinks,
+  migratePostLinks,
+  todayISO,
+} from "@/lib/execution-utils";
 import type { PostLinkEntry } from "@/lib/types";
+
+const STAGE_DOT: Record<keyof typeof DEADLINE_STAGE_STYLES, string> = {
+  safe: "bg-emerald-400",
+  warning: "bg-amber-400",
+  urgent: "bg-orange-400",
+  overdue: "bg-rose-400",
+  completed: "bg-cyan-400",
+};
+
+const STAGE_LEGEND: Array<{
+  stage: keyof typeof DEADLINE_STAGE_STYLES;
+  label: string;
+}> = [
+  { stage: "safe", label: "여유" },
+  { stage: "warning", label: "주의" },
+  { stage: "urgent", label: "임박" },
+  { stage: "overdue", label: "지연" },
+  { stage: "completed", label: "완료" },
+];
 
 export function PostLinksField({
   links,
@@ -46,24 +77,60 @@ export function PostLinksField({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <label className="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
           <Link2 className="h-3.5 w-3.5" />
           포스팅 링크 · 업무별 일정
         </label>
-        <span className="text-[10px] text-zinc-600">
-          링크 입력 시 입력일·완료일 자동 기록
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {STAGE_LEGEND.map(({ stage, label }) => {
+            const style = DEADLINE_STAGE_STYLES[stage];
+            return (
+              <span
+                key={stage}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1",
+                  style.bg,
+                  style.text,
+                  style.border,
+                )}
+                title={stage === "completed" ? "완료" : DEADLINE_STAGE_DESC[stage as keyof typeof DEADLINE_STAGE_DESC]}
+              >
+                <span className={cn("h-1.5 w-1.5 rounded-full", STAGE_DOT[stage])} />
+                {label}
+              </span>
+            );
+          })}
+        </div>
       </div>
+      <p className="text-[10px] text-zinc-600">
+        링크 입력 시 입력일·완료일 자동 기록 · 마감일 기준 색상 구분
+      </p>
       <div className="space-y-3">
-        {items.map((link, i) => (
+        {items.map((link, i) => {
+          const dueDate = link.dueDate ?? defaultDueDate ?? "";
+          const stage = getDeadlineStage(dueDate, link.completedDate);
+          const style = DEADLINE_STAGE_STYLES[stage];
+
+          return (
           <div
             key={link.id}
-            className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 space-y-2"
+            className={cn(
+              "rounded-xl border p-3 space-y-2",
+              style.border,
+              style.bg,
+            )}
           >
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-zinc-300">
+                포스팅 URL {i + 1}
+              </p>
+              <Badge variant={getDeadlineStageBadgeVariant(stage)}>
+                {getDeadlineStageLabel(stage)}
+              </Badge>
+            </div>
             <Input
               type="url"
-              label={`포스팅 URL ${i + 1}`}
               placeholder="https://blog.naver.com/..."
               value={link.url}
               onChange={(e) => updateUrl(i, e.target.value)}
@@ -72,14 +139,19 @@ export function PostLinksField({
               <Input
                 label="마감일"
                 type="date"
-                value={link.dueDate ?? defaultDueDate ?? ""}
+                value={dueDate}
                 onChange={(e) => update(i, { dueDate: e.target.value })}
+                className={cn(style.border, stage !== "completed" && style.bg)}
               />
               <Input
                 label="완료일"
                 type="date"
                 value={link.completedDate ?? ""}
                 onChange={(e) => update(i, { completedDate: e.target.value })}
+                className={cn(
+                  link.completedDate && DEADLINE_STAGE_STYLES.completed.border,
+                  link.completedDate && DEADLINE_STAGE_STYLES.completed.bg,
+                )}
               />
               <Input
                 label="입력일"
@@ -100,7 +172,8 @@ export function PostLinksField({
               </button>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
       <Button type="button" size="sm" variant="secondary" onClick={addRow}>
         <Plus className="h-3.5 w-3.5" />
@@ -124,8 +197,30 @@ export function PostLinksCell({
 
   return (
     <div className="flex max-w-[240px] flex-col gap-2">
-      {valid.map((link) => (
-        <div key={link.id} className="text-xs">
+      {valid.map((link) => {
+        const stage = getDeadlineStage(
+          link.dueDate || fallbackDueDate,
+          link.completedDate,
+        );
+        const style = DEADLINE_STAGE_STYLES[stage];
+
+        return (
+        <div
+          key={link.id}
+          className={cn(
+            "rounded-lg border px-2 py-1.5 text-xs",
+            style.border,
+            style.bg,
+          )}
+        >
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <Badge
+              variant={getDeadlineStageBadgeVariant(stage)}
+              className="text-[10px]"
+            >
+              {getDeadlineStageLabel(stage)}
+            </Badge>
+          </div>
           <a
             href={
               link.url.startsWith("http") ? link.url : `https://${link.url}`
@@ -138,11 +233,12 @@ export function PostLinksCell({
             {link.url.replace(/^https?:\/\//, "").slice(0, 36)}
             {link.url.length > 36 ? "…" : ""}
           </a>
-          <p className="text-[10px] text-zinc-600">
+          <p className={cn("text-[10px]", style.text)}>
             마감 {link.dueDate || "-"} · 완료 {link.completedDate || "-"}
           </p>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

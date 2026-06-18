@@ -6,20 +6,28 @@ import { TaskChannelBadge } from "@/components/ui/TaskChannelBadge";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { StatCard } from "@/components/ui/StatCard";
 import { useData } from "@/context/DataContext";
+import { cn } from "@/lib/cn";
+import { getTabCardClass } from "@/lib/tab-ui-utils";
 import {
   getTaskChannelAccent,
   getTaskChannelProgressBarColor,
 } from "@/lib/task-channel-utils";
+import type { WorkOrderTaskType } from "@/lib/types";
 import type { ContractWorkProgress } from "@/lib/work-order-utils";
 
 export function ContractProgressPanel({
   clientName,
   progress,
+  selectedField = null,
+  onFieldSelect,
 }: {
   clientName: string;
   progress: ContractWorkProgress;
+  selectedField?: WorkOrderTaskType | null;
+  onFieldSelect?: (taskType: WorkOrderTaskType | null) => void;
 }) {
   const data = useData();
+  const interactive = Boolean(onFieldSelect);
 
   if (progress.total === 0) return null;
 
@@ -71,6 +79,11 @@ export function ContractProgressPanel({
           <div>
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
               분야별 진행
+              {interactive && (
+                <span className="ml-2 font-normal normal-case text-zinc-600">
+                  · 클릭 시 해당 분야 업무만 표시
+                </span>
+              )}
             </p>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {progress.fields.map((field) => {
@@ -78,10 +91,38 @@ export function ContractProgressPanel({
                   data.taskChannels,
                   field.taskType,
                 );
+                const active = selectedField === field.taskType;
+
                 return (
                   <div
                     key={field.taskType}
-                    className="rounded-xl border border-zinc-800/80 bg-zinc-950/30 p-3"
+                    role={interactive ? "button" : undefined}
+                    tabIndex={interactive ? 0 : undefined}
+                    onClick={
+                      interactive
+                        ? () =>
+                            onFieldSelect?.(
+                              active ? null : field.taskType,
+                            )
+                        : undefined
+                    }
+                    onKeyDown={
+                      interactive
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onFieldSelect?.(
+                                active ? null : field.taskType,
+                              );
+                            }
+                          }
+                        : undefined
+                    }
+                    className={cn(
+                      getTabCardClass(accent, active, "p-3"),
+                      interactive &&
+                        "cursor-pointer",
+                    )}
                   >
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <TaskChannelBadge

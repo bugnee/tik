@@ -15,6 +15,18 @@ export function isLeaderManagedContract(
   return getContractAssignee(data, contract)?.role === "team_leader";
 }
 
+export function isLeaderManagedAssignee(
+  data: AppData,
+  userId?: string,
+): boolean {
+  if (!userId) return false;
+  return data.users.find((u) => u.id === userId)?.role === "team_leader";
+}
+
+/** 팀장 직접 담당 고객사 — 업무·성과급 정책 안내 */
+export const LEADER_MANAGED_CONTRACT_NOTE =
+  "팀장이 직접 담당하는 고객사는 담당 실무와 동일하게 실행·계약 업무를 수행합니다. 성과급은 담당에게 배분하지 않고 팀장 한도 전액을 팀장이 받습니다.";
+
 export function canRoleViewContract(
   data: AppData,
   contract: Contract,

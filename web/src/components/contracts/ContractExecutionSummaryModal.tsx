@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, ExternalLink } from "lucide-react";
 import { ContractProgressPanel } from "@/components/work-orders/ContractProgressPanel";
@@ -26,6 +26,7 @@ import {
   EXECUTION_STATUS_LABELS,
   PAYOUT_LABELS,
   type ExpenseCategory,
+  type WorkOrderTaskType,
 } from "@/lib/types";
 import {
   calcContractWorkProgress,
@@ -44,6 +45,11 @@ export function ContractExecutionSummaryModal({
   onClose,
 }: ContractExecutionSummaryModalProps) {
   const data = useData();
+  const [fieldFilter, setFieldFilter] = useState<WorkOrderTaskType | null>(null);
+
+  useEffect(() => {
+    setFieldFilter(null);
+  }, [contractId, open]);
 
   const contract = contractId
     ? data.contracts.find((c) => c.id === contractId)
@@ -56,6 +62,14 @@ export function ContractExecutionSummaryModal({
       data.taskChannels,
     );
   }, [data, contractId]);
+
+  const filteredExecutions = useMemo(() => {
+    if (!fieldFilter) return executions;
+    return executions.filter(
+      (exec) =>
+        exec.taskChannelId === fieldFilter || exec.type === fieldFilter,
+    );
+  }, [executions, fieldFilter]);
 
   const expenses = useMemo(() => {
     if (!contractId) return [];
@@ -156,20 +170,35 @@ export function ContractExecutionSummaryModal({
           <ContractProgressPanel
             clientName={contract.clientName}
             progress={workProgress}
+            selectedField={fieldFilter}
+            onFieldSelect={setFieldFilter}
           />
         )}
 
         <section>
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-            집행 실행 현황 ({executions.length}건)
-          </h3>
-          {executions.length === 0 ? (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              집행 실행 현황 ({filteredExecutions.length}건)
+            </h3>
+            {fieldFilter && (
+              <button
+                type="button"
+                onClick={() => setFieldFilter(null)}
+                className="text-xs text-emerald-400 hover:underline"
+              >
+                전체 보기
+              </button>
+            )}
+          </div>
+          {filteredExecutions.length === 0 ? (
             <p className="rounded-xl border border-zinc-800 bg-zinc-950/30 px-4 py-6 text-center text-sm text-zinc-500">
-              등록된 실행 데이터가 없습니다.
+              {fieldFilter
+                ? "해당 분야의 실행 데이터가 없습니다."
+                : "등록된 실행 데이터가 없습니다."}
             </p>
           ) : (
             <div className="space-y-2">
-              {executions.map((exec) => {
+              {filteredExecutions.map((exec) => {
                 const pct =
                   exec.targetCount > 0
                     ? (exec.completedCount / exec.targetCount) * 100

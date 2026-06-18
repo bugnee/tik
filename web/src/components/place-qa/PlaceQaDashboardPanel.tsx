@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertCircle,
   ChevronRight,
@@ -14,14 +14,16 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
+import { QaThreadListModal } from "@/components/place-qa/QaThreadListModal";
 import {
   getQaContractRows,
   getQaDashboardStats,
   getVisibleContractIds,
+  threadNeedsStaffReply,
 } from "@/lib/place-qa-utils";
 
 export function PlaceQaDashboardPanel({
-  title = "플레이스 · 문의 현황",
+  title = "고객사 Q&A 현황",
   showAllLink = true,
 }: {
   title?: string;
@@ -29,6 +31,9 @@ export function PlaceQaDashboardPanel({
 }) {
   const data = useData();
   const { currentUser, activeRole } = useRole();
+  const [qaModal, setQaModal] = useState<
+    "all" | "needsReply" | "open" | "answered" | null
+  >(null);
 
   const contractIds = useMemo(
     () => getVisibleContractIds(data, activeRole, currentUser.id),
@@ -38,6 +43,27 @@ export function PlaceQaDashboardPanel({
   const stats = useMemo(
     () => getQaDashboardStats(data, contractIds),
     [data, contractIds],
+  );
+
+  const visibleThreads = useMemo(
+    () =>
+      data.qaThreads.filter((t) => contractIds.includes(t.contractId)),
+    [data.qaThreads, contractIds],
+  );
+
+  const needsReplyThreads = useMemo(
+    () => visibleThreads.filter((t) => threadNeedsStaffReply(data, t)),
+    [visibleThreads, data],
+  );
+
+  const openThreads = useMemo(
+    () => visibleThreads.filter((t) => t.status !== "closed"),
+    [visibleThreads],
+  );
+
+  const answeredThreads = useMemo(
+    () => visibleThreads.filter((t) => t.status === "answered"),
+    [visibleThreads],
   );
 
   const rows = useMemo(
@@ -73,6 +99,7 @@ export function PlaceQaDashboardPanel({
           subValue="활성·종료 포함"
           icon={MessagesSquare}
           accent="cyan"
+          onValueClick={() => setQaModal("all")}
         />
         <StatCard
           label="미답변"
@@ -80,6 +107,7 @@ export function PlaceQaDashboardPanel({
           subValue="고객사 마지막 메시지"
           icon={AlertCircle}
           accent={stats.needsReply > 0 ? "rose" : "emerald"}
+          onValueClick={() => setQaModal("needsReply")}
         />
         <StatCard
           label="진행 중"
@@ -87,6 +115,7 @@ export function PlaceQaDashboardPanel({
           subValue="종료되지 않은 문의"
           icon={MessageSquare}
           accent="amber"
+          onValueClick={() => setQaModal("open")}
         />
         <StatCard
           label="답변 완료"
@@ -94,12 +123,46 @@ export function PlaceQaDashboardPanel({
           subValue="당사 답변 후 대기"
           icon={MessageSquare}
           accent="emerald"
+          onValueClick={() => setQaModal("answered")}
         />
       </div>
 
+      <QaThreadListModal
+        open={qaModal === "all"}
+        onClose={() => setQaModal(null)}
+        title={`전체 문의 (${stats.totalThreads}건)`}
+        description="활성·종료 포함 · 팀 담당 업체 기준"
+        threads={visibleThreads}
+        data={data}
+      />
+      <QaThreadListModal
+        open={qaModal === "needsReply"}
+        onClose={() => setQaModal(null)}
+        title={`미답변 문의 (${stats.needsReply}건)`}
+        description="고객사 마지막 메시지 · 답변 필요"
+        threads={needsReplyThreads}
+        data={data}
+      />
+      <QaThreadListModal
+        open={qaModal === "open"}
+        onClose={() => setQaModal(null)}
+        title={`진행 중 문의 (${stats.openThreads}건)`}
+        description="종료되지 않은 문의"
+        threads={openThreads}
+        data={data}
+      />
+      <QaThreadListModal
+        open={qaModal === "answered"}
+        onClose={() => setQaModal(null)}
+        title={`답변 완료 (${stats.answeredThreads}건)`}
+        description="당사 답변 후 고객 확인 대기"
+        threads={answeredThreads}
+        data={data}
+      />
+
       {rows.length === 0 ? (
         <p className="pb-4 text-center text-sm text-zinc-500">
-          아직 등록된 플레이스 문의가 없습니다.
+          아직 등록된 고객사 Q&A가 없습니다.
         </p>
       ) : (
         <div className="overflow-x-auto">

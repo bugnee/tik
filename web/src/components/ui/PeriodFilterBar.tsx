@@ -2,6 +2,8 @@
 
 import { Input } from "@/components/ui/FormFields";
 import { cn } from "@/lib/cn";
+import { getTabButtonClass } from "@/lib/tab-ui-utils";
+import type { TaskChannelAccent } from "@/lib/types";
 import {
   PERIOD_MODE_LABELS,
   type PeriodFilterValue,
@@ -9,6 +11,13 @@ import {
 } from "@/lib/date-filter-utils";
 
 const MODES: PeriodMode[] = ["day", "month", "year", "range"];
+
+const PERIOD_MODE_ACCENTS: Record<PeriodMode, TaskChannelAccent> = {
+  day: "cyan",
+  month: "emerald",
+  year: "amber",
+  range: "violet",
+};
 
 type PeriodFilterBarProps = {
   value: PeriodFilterValue;
@@ -34,25 +43,24 @@ export function PeriodFilterBar({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 sm:p-4",
+        "flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--card-muted)] p-3 sm:p-4",
         className,
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+        <span className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
           조회 기간
         </span>
-        <div className="flex flex-wrap gap-1 rounded-lg border border-zinc-800 bg-zinc-900/60 p-1">
+        <div className="flex flex-wrap gap-1 rounded-lg border border-[var(--border)] bg-[var(--card-muted)] p-1">
           {MODES.map((mode) => (
             <button
               key={mode}
               type="button"
               onClick={() => setMode(mode)}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                value.mode === mode
-                  ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30"
-                  : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300",
+              className={getTabButtonClass(
+                PERIOD_MODE_ACCENTS[mode],
+                value.mode === mode,
+                "rounded-md px-3 py-1.5 text-xs font-medium",
               )}
             >
               {PERIOD_MODE_LABELS[mode]}
@@ -60,7 +68,7 @@ export function PeriodFilterBar({
           ))}
         </div>
         {summary && (
-          <span className="ml-auto text-xs text-zinc-500">{summary}</span>
+          <span className="ml-auto text-xs text-[var(--muted)]">{summary}</span>
         )}
       </div>
 
@@ -89,6 +97,7 @@ export function PeriodFilterBar({
             type="number"
             min={2020}
             max={2100}
+            commaFormat={false}
             value={value.year}
             onChange={(e) => patch({ year: e.target.value.slice(0, 4) })}
             className="w-32"

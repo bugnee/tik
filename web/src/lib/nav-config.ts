@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   Building2,
+  ClipboardCheck,
   Handshake,
   LayoutDashboard,
   MapPin,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 
 import type { UserRole } from "@/lib/types";
+import { canViewWorkEvaluations } from "@/lib/work-evaluation-utils";
 
   /** ERP 주요 메뉴 — Navbar·MobileBottomNav 공통 사용 */
 export interface NavItem {
@@ -25,6 +27,8 @@ export interface NavItem {
   placeQaOnly?: boolean;
   /** 파트너(리셀러·집행) 화면에서 숨김 */
   hideForPartnerRole?: boolean;
+  /** 고객사·파트너·대표 화면에서 숨김 */
+  internalEvaluationOnly?: boolean;
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -48,9 +52,16 @@ export const NAV_ITEMS: NavItem[] = [
     hideForPartnerRole: true,
   },
   {
+    href: "/evaluations",
+    label: "업무평가",
+    shortLabel: "평가",
+    icon: ClipboardCheck,
+    internalEvaluationOnly: true,
+  },
+  {
     href: "/place-qa",
-    label: "플레이스 문의",
-    shortLabel: "플레이스",
+    label: "고객사 Q&A",
+    shortLabel: "Q&A",
     icon: MapPin,
     placeQaOnly: true,
   },
@@ -116,6 +127,7 @@ export function getNavItemsForRole(
     if (item.settingsOnly && !canManageSettings) return false;
     if (item.placeQaOnly && !canPlaceQa) return false;
     if (role === "partner" && item.hideForPartnerRole) return false;
+    if (item.internalEvaluationOnly && !canViewWorkEvaluations(role)) return false;
     return true;
   });
 }

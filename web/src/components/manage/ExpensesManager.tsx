@@ -79,6 +79,7 @@ export function ExpensesManager() {
     contracts,
     partners,
     expenseCategories,
+    partnerFilterDefinitions,
     addExpense,
     updateExpense,
     deleteExpense,
@@ -371,6 +372,7 @@ export function ExpensesManager() {
                       form.category,
                       expenseCategories,
                     ) ?? undefined,
+                    partnerFilterDefinitions,
                   )}
                 </option>
               ))}

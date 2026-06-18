@@ -1,12 +1,18 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 import { Input, Select, Textarea } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
 import { PostLinksField } from "@/components/executions/PostLinksField";
 import { useData } from "@/context/DataContext";
+import { cn } from "@/lib/cn";
 import {
   createEmptyPostLink,
+  DEADLINE_STAGE_STYLES,
+  getDeadlineStage,
+  getDeadlineStageBadgeVariant,
+  getDeadlineStageLabel,
   todayISO,
 } from "@/lib/execution-utils";
 import { getExecutionTypeLabels } from "@/lib/task-channel-utils";
@@ -17,6 +23,15 @@ import type {
   ExecutionType,
 } from "@/lib/types";
 import { EXECUTION_STATUS_LABELS } from "@/lib/types";
+
+function executionStatusBadgeVariant(
+  status: ExecutionStatus,
+): "success" | "warning" | "danger" | "info" | "default" {
+  if (status === "completed") return "success";
+  if (status === "delayed") return "danger";
+  if (status === "in_progress") return "info";
+  return "default";
+}
 
 export function ExecutionFormModal({
   open,
@@ -41,6 +56,14 @@ export function ExecutionFormModal({
 }) {
   const data = useData();
   const typeLabels = getExecutionTypeLabels(data);
+  const dueStage = getDeadlineStage(
+    form.dueDate,
+    form.completedDate,
+    form.status,
+  );
+  const dueStyle = DEADLINE_STAGE_STYLES[dueStage];
+  const progressMet =
+    form.targetCount > 0 && form.completedCount >= form.targetCount;
 
   return (
     <Modal
@@ -78,21 +101,31 @@ export function ExecutionFormModal({
               </option>
             ))}
           </Select>
-          <Select
-            label="상태"
-            value={form.status}
-            onChange={(e) =>
-              setForm({ ...form, status: e.target.value as ExecutionStatus })
-            }
-          >
-            {(Object.keys(EXECUTION_STATUS_LABELS) as ExecutionStatus[]).map(
-              (s) => (
-                <option key={s} value={s}>
-                  {EXECUTION_STATUS_LABELS[s]}
-                </option>
-              ),
-            )}
-          </Select>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-[var(--foreground-secondary)]">
+              상태
+            </label>
+            <div className="flex items-center gap-2">
+              <Select
+                value={form.status}
+                onChange={(e) =>
+                  setForm({ ...form, status: e.target.value as ExecutionStatus })
+                }
+                className="flex-1"
+              >
+                {(Object.keys(EXECUTION_STATUS_LABELS) as ExecutionStatus[]).map(
+                  (s) => (
+                    <option key={s} value={s}>
+                      {EXECUTION_STATUS_LABELS[s]}
+                    </option>
+                  ),
+                )}
+              </Select>
+              <Badge variant={executionStatusBadgeVariant(form.status)}>
+                {EXECUTION_STATUS_LABELS[form.status]}
+              </Badge>
+            </div>
+          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
@@ -104,6 +137,9 @@ export function ExecutionFormModal({
             onChange={(e) =>
               setForm({ ...form, completedCount: Number(e.target.value) })
             }
+            className={cn(
+              progressMet && "border-emerald-500/40 bg-emerald-500/5",
+            )}
           />
           <Input
             label="목표 수"
@@ -114,13 +150,23 @@ export function ExecutionFormModal({
               setForm({ ...form, targetCount: Number(e.target.value) })
             }
           />
-          <Input
-            label="마감일 *"
-            type="date"
-            value={form.dueDate ?? ""}
-            onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-            required
-          />
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <label className="block text-xs font-medium text-[var(--foreground-secondary)]">
+                마감일 *
+              </label>
+              <Badge variant={getDeadlineStageBadgeVariant(dueStage)}>
+                {getDeadlineStageLabel(dueStage)}
+              </Badge>
+            </div>
+            <Input
+              type="date"
+              value={form.dueDate ?? ""}
+              onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+              required
+              className={cn(dueStyle.border, dueStyle.bg)}
+            />
+          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -131,6 +177,11 @@ export function ExecutionFormModal({
             onChange={(e) =>
               setForm({ ...form, completedDate: e.target.value })
             }
+            className={cn(
+              form.completedDate &&
+                DEADLINE_STAGE_STYLES.completed.border &&
+                DEADLINE_STAGE_STYLES.completed.bg,
+            )}
           />
           <Input
             label="입력일"

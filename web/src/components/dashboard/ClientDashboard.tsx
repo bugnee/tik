@@ -15,6 +15,8 @@ import { useRole } from "@/context/RoleContext";
 import { Badge } from "@/components/ui/Badge";
 import { TaskChannelBadge } from "@/components/ui/TaskChannelBadge";
 import { ContractPeriodSelector } from "@/components/contracts/ContractPeriodSelector";
+import { ContractWorkCalendar } from "@/components/experience/ContractWorkCalendar";
+import { ExperienceCampaignPanel } from "@/components/experience/ExperienceCampaignPanel";
 import { PlaceCredentialsPanel } from "@/components/place-qa/PlaceCredentialsPanel";
 import { QaConversationPanel } from "@/components/place-qa/QaConversationPanel";
 import { PostLinkOpinionButton } from "@/components/executions/PostLinkOpinionButton";
@@ -28,7 +30,6 @@ import {
 import {
   contractRecordsForPeriod,
   createDefaultContractPeriodSelection,
-  dateInContractPeriod,
   filterActivityByContractPeriod,
   filterLinksByContractPeriod,
   filterWorkOrdersByContractPeriod,
@@ -37,6 +38,13 @@ import {
   resolveContractPeriod,
   type ContractPeriodSelection,
 } from "@/lib/contract-period-utils";
+import {
+  getContractExperienceCampaigns,
+} from "@/lib/experience-campaign-utils";
+import {
+  getSyncExecutionChannels,
+  findExecutionForWorkOrder,
+} from "@/lib/execution-generation-utils";
 import {
   getClientContractForUser,
   getClientReportLinks,
@@ -53,10 +61,12 @@ import {
   getContractTargetChannels,
   getContractTargetCount,
   getContractTargetUnit,
+  getExecutionTypeAccent,
   getExecutionTypeLabel,
   shouldShowContractTargetRow,
   taskChannelToExecutionType,
 } from "@/lib/task-channel-utils";
+import { getTabCardClass, getTabPillClass } from "@/lib/tab-ui-utils";
 import {
   CLIENT_WORK_STAGE_LABELS,
 } from "@/lib/work-order-utils";
@@ -69,14 +79,22 @@ import {
 import type { ClientReportLink } from "@/lib/selectors";
 import { cn } from "@/lib/cn";
 
-export function ClientDashboard() {
+export function ClientDashboard({
+  contractId: contractIdOverride,
+  previewMode = false,
+}: {
+  contractId?: string;
+  previewMode?: boolean;
+} = {}) {
   const data = useData();
   const { currentUser } = useRole();
 
-  const contract = useMemo(
-    () => getClientContractForUser(data, currentUser.id),
-    [data, currentUser.id],
-  );
+  const contract = useMemo(() => {
+    if (contractIdOverride) {
+      return data.contracts.find((c) => c.id === contractIdOverride) ?? null;
+    }
+    return getClientContractForUser(data, currentUser.id);
+  }, [data, currentUser.id, contractIdOverride]);
 
   const executions = useMemo(
     () => (contract ? getContractExecutions(data, contract.id) : []),
@@ -124,6 +142,14 @@ export function ClientDashboard() {
   const completionChannels = useMemo(
     () => targetChannels.filter((c) => c.contractDoneField),
     [targetChannels],
+  );
+
+  const contractCampaigns = useMemo(
+    () =>
+      contract
+        ? getContractExperienceCampaigns(data.experienceCampaigns ?? [], contract.id)
+        : [],
+    [data.experienceCampaigns, contract],
   );
 
   const completion = contract ? getCompletionRate(data, contract) : 0;
@@ -189,13 +215,43 @@ export function ClientDashboard() {
 
   const periodRemaining = getPeriodRemainingDays(resolvedPeriod);
 
-  const periodExecutions = useMemo(
-    () =>
-      executions.filter((exec) =>
-        dateInContractPeriod(exec.dueDate, resolvedPeriod),
-      ),
-    [executions, resolvedPeriod],
-  );
+  const periodProgressItems = useMemo(() => {
+    if (!contract) return [];
+
+    return getSyncExecutionChannels(contract, data.taskChannels).map(
+      (channel) => {
+        const exec = findExecutionForWorkOrder(
+          executions,
+          contract.id,
+          channel.id,
+          data.taskChannels,
+        );
+        const execType = taskChannelToExecutionType(
+          data.taskChannels,
+          channel.id,
+        );
+        const target = getContractTargetCount(contract, channel);
+        const done = getContractDoneCount(contract, channel);
+        const status =
+          exec?.status ??
+          (target > 0 && done >= target
+            ? "completed"
+            : done > 0
+              ? "in_progress"
+              : "pending");
+
+        return {
+          id: exec?.id ?? `channel-${channel.id}`,
+          type: execType,
+          taskChannelId: channel.id,
+          status,
+          completedCount: done,
+          targetCount: target,
+          dueDate: exec?.dueDate,
+        };
+      },
+    );
+  }, [contract, executions, data.taskChannels]);
 
   useEffect(() => {
     setLinkFilter("all");
@@ -250,6 +306,11 @@ export function ClientDashboard() {
 
   return (
     <div className="space-y-6">
+      {previewMode && (
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90">
+          고객사 포털 미리보기 · {contract.clientName} 화면입니다. (담당·팀장 조회용)
+        </div>
+      )}
       <div className="rounded-2xl border border-rose-500/20 bg-gradient-to-br from-rose-500/10 via-zinc-900/40 to-zinc-950 p-6 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -322,6 +383,19 @@ export function ClientDashboard() {
         />
       </div>
 
+      <div className="grid gap-6 xl:grid-cols-2">
+        <ContractWorkCalendar
+          data={data}
+          contractId={contract.id}
+          experienceCampaigns={contractCampaigns}
+        />
+        <ExperienceCampaignPanel
+          contractId={contract.id}
+          mode="client"
+          readOnly={previewMode}
+        />
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-2">
           <CardHeader
@@ -386,19 +460,20 @@ export function ClientDashboard() {
             />
           </div>
 
-          {periodExecutions.length === 0 ? (
+          {periodProgressItems.length === 0 ? (
             <p className="py-8 text-center text-sm text-zinc-500">
-              선택한 기간에 등록된 실행 진행 데이터가 없습니다.
+              집행 목표가 설정된 채널이 없습니다.
             </p>
           ) : (
             <div className="space-y-3">
-              {periodExecutions.map((exec) => {
+              {periodProgressItems.map((exec) => {
                 const pct =
                   exec.targetCount > 0
                     ? (exec.completedCount / exec.targetCount) * 100
                     : 0;
                 const filterId = `exec:${exec.type}`;
                 const isSelected = linkFilter === filterId;
+                const accent = getExecutionTypeAccent(data.taskChannels, exec.type);
                 return (
                   <button
                     key={exec.id}
@@ -406,16 +481,12 @@ export function ClientDashboard() {
                     onClick={() =>
                       setLinkFilter(isSelected ? "all" : filterId)
                     }
-                    className={cn(
-                      "w-full rounded-xl border p-4 text-left transition-all",
-                      isSelected
-                        ? "border-emerald-500/50 bg-emerald-500/10 ring-1 ring-emerald-500/30"
-                        : "border-zinc-800 bg-zinc-950/40 hover:border-zinc-700 hover:bg-zinc-900/50",
-                    )}
+                    className={getTabCardClass(accent, isSelected, "w-full p-4")}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <TaskChannelBadge
                         data={data}
+                        taskType={exec.taskChannelId}
                         executionType={exec.type}
                       />
                       <Badge
@@ -465,17 +536,16 @@ export function ClientDashboard() {
 
         {periodLinks.length > 0 && filterOptions.length > 1 && (
           <div className="mb-4 flex flex-wrap gap-2 px-1">
-            {filterOptions.map((opt) => (
+            {filterOptions.map((opt) => {
+              const accent = opt.executionType
+                ? getExecutionTypeAccent(data.taskChannels, opt.executionType)
+                : "sky";
+              return (
               <button
                 key={opt.id}
                 type="button"
                 onClick={() => setLinkFilter(opt.id)}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                  linkFilter === opt.id
-                    ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-400"
-                    : "border-zinc-700 bg-zinc-900/60 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300",
-                )}
+                className={getTabPillClass(accent, linkFilter === opt.id)}
               >
                 {opt.executionType ? (
                   <TaskChannelBadge
@@ -490,7 +560,8 @@ export function ClientDashboard() {
                   {opt.count}
                 </span>
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -677,7 +748,7 @@ export function ClientDashboard() {
 
       <p className="text-center text-xs text-zinc-600">
         담당: {getUserName(data, contract.assignedStaffId)} ·{" "}
-        {getTeamName(data, contract.teamId)} · 플레이스 · 질의응답에서 문의와 링크 의견을 확인할 수 있습니다.
+        {getTeamName(data, contract.teamId)} · 고객사 Q&A에서 문의와 링크 의견을 확인할 수 있습니다.
       </p>
     </div>
   );

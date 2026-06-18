@@ -19,6 +19,7 @@ import {
   countByDeadlineStage,
   DEADLINE_STAGE_DESC,
   DEADLINE_STAGE_LABELS,
+  DEADLINE_STAGE_STYLES,
   filterByDeadlineStage,
   getDeadlineStage,
   getExecutionCompletionRate,
@@ -42,31 +43,7 @@ const STAGE_STYLES: Record<
     bg: "bg-zinc-900/60",
     text: "text-zinc-300",
   },
-  safe: {
-    border: "border-emerald-500/40",
-    bg: "bg-emerald-500/10",
-    text: "text-emerald-400",
-  },
-  warning: {
-    border: "border-amber-500/40",
-    bg: "bg-amber-500/10",
-    text: "text-amber-400",
-  },
-  urgent: {
-    border: "border-orange-500/40",
-    bg: "bg-orange-500/10",
-    text: "text-orange-400",
-  },
-  overdue: {
-    border: "border-rose-500/40",
-    bg: "bg-rose-500/10",
-    text: "text-rose-400",
-  },
-  completed: {
-    border: "border-cyan-500/40",
-    bg: "bg-cyan-500/10",
-    text: "text-cyan-400",
-  },
+  ...DEADLINE_STAGE_STYLES,
 };
 
 export function ExecutionProgressBoard({

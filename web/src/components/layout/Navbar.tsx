@@ -12,6 +12,7 @@ import { getNavItemsForRole, isNavActive } from "@/lib/nav-config";
 import { ROLE_SURFACE_CLASSES } from "@/lib/role-utils";
 import { ROLE_LABELS } from "@/lib/types";
 import { RoleSwitcher } from "./RoleSwitcher";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -26,17 +27,17 @@ export function Navbar() {
   );
 
   return (
-    <header className="sticky top-0 z-50 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-xl safe-top">
+    <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--nav-bg)] backdrop-blur-xl safe-top">
       <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-3 px-4 md:h-16 md:gap-4 lg:gap-6 lg:px-8">
         <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-900/40">
             <Plane className="h-4 w-4 text-white" strokeWidth={2.5} />
           </div>
           <div className="hidden sm:block">
-            <p className="text-sm font-bold tracking-tight text-zinc-50">
+            <p className="text-sm font-bold tracking-tight text-[var(--foreground)]">
               TRIP IT KOREA
             </p>
-            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-500">
+            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[var(--muted)]">
               ERP · Settlement
             </p>
           </div>
@@ -56,8 +57,8 @@ export function Navbar() {
                 className={cn(
                   "flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition-colors lg:gap-2 lg:px-3",
                   active
-                    ? "bg-zinc-800/80 text-emerald-400"
-                    : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200",
+                    ? "bg-[var(--card-muted)] text-emerald-600 ring-1 ring-emerald-500/25 dark:bg-zinc-800/80 dark:text-emerald-400 dark:ring-0"
+                    : "text-[var(--muted)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)] dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200",
                 )}
               >
                 <Icon className="h-4 w-4 shrink-0" />
@@ -69,6 +70,7 @@ export function Navbar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-1.5 sm:gap-3">
+          <ThemeToggle />
           {activeRole !== "client" && <ClientPipelineWidget compact />}
 
           {!isAuthenticated && <RoleSwitcher />}

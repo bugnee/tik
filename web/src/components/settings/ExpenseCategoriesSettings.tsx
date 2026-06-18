@@ -16,35 +16,37 @@ import {
 } from "@/components/ui/DataTable";
 import { Checkbox, Input, Select } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
+import { PartnerFilterBadge } from "@/components/ui/PartnerFilterBadge";
 import {
   createExpenseCategoryInput,
   getSortedExpenseCategories,
 } from "@/lib/expense-category-utils";
-import { PARTNER_CATEGORY_LABELS } from "@/lib/partner-utils";
+import {
+  getPartnerFilterSelectOptions,
+} from "@/lib/partner-filter-utils";
 import type {
   ExpenseCategoryDefinition,
   ExpenseCategoryInput,
   PartnerCategory,
 } from "@/lib/types";
 
-const PARTNER_FILTER_OPTIONS: { value: string; label: string }[] = [
-  { value: "", label: "없음 (경비 · 직접입력)" },
-  ...(
-    Object.entries(PARTNER_CATEGORY_LABELS) as [PartnerCategory, string][]
-  ).map(([value, label]) => ({ value, label })),
-];
-
 export function ExpenseCategoriesSettings() {
   const data = useData();
   const { canManageContractTerms } = useRole();
   const {
     expenseCategories,
+    partnerFilterDefinitions,
     expenses,
     taskChannels,
     addExpenseCategory,
     updateExpenseCategory,
     deleteExpenseCategory,
   } = data;
+
+  const partnerFilterOptions = useMemo(
+    () => getPartnerFilterSelectOptions(partnerFilterDefinitions),
+    [partnerFilterDefinitions],
+  );
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ExpenseCategoryDefinition | null>(null);
@@ -152,10 +154,16 @@ export function ExpenseCategoriesSettings() {
                     </Badge>
                   )}
                 </Td>
-                <Td className="text-xs text-zinc-400">
-                  {category.partnerCategory
-                    ? PARTNER_CATEGORY_LABELS[category.partnerCategory]
-                    : "없음"}
+                <Td>
+                  {category.partnerCategory ? (
+                    <PartnerFilterBadge
+                      filters={partnerFilterDefinitions}
+                      taskChannels={taskChannels}
+                      categoryId={category.partnerCategory}
+                    />
+                  ) : (
+                    <span className="text-xs text-zinc-500">없음</span>
+                  )}
                 </Td>
                 <Td className="font-mono text-zinc-400">{category.sortOrder}</Td>
                 <Td>
@@ -225,7 +233,7 @@ export function ExpenseCategoriesSettings() {
                 })
               }
             >
-              {PARTNER_FILTER_OPTIONS.map((opt) => (
+              {partnerFilterOptions.map((opt) => (
                 <option key={opt.value || "none"} value={opt.value}>
                   {opt.label}
                 </option>

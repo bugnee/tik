@@ -13,6 +13,7 @@ import {
   EmptyState,
   PageHeader,
   SearchBar,
+  SortableTh,
   Td,
   Th,
   Tr,
@@ -20,11 +21,15 @@ import {
 import { StatCard } from "@/components/ui/StatCard";
 import { Checkbox, Input, Select } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
+import { LeaderManagedContractNotice } from "@/components/contracts/LeaderManagedContractNotice";
+import { ExtensionContractCheckboxField } from "@/components/contracts/ExtensionContractCheckboxField";
+import { cn } from "@/lib/cn";
 import {
   countPipeline,
   getContractStatusDisplay,
   getPipelineCategory,
 } from "@/lib/contract-lifecycle";
+import { canEnableExtensionContractCheckbox } from "@/lib/contract-terms-utils";
 import { formatKRW } from "@/lib/finance";
 import { filterPartnersByCategory, getPartnerName } from "@/lib/partner-utils";
 import {
@@ -33,7 +38,10 @@ import {
   getContractTargetCount,
   setContractTargetCount,
 } from "@/lib/task-channel-utils";
-import { isLeaderManagedContract } from "@/lib/contract-access-utils";
+import {
+  isLeaderManagedAssignee,
+  isLeaderManagedContract,
+} from "@/lib/contract-access-utils";
 import {
   contractAssigneeUsers,
   filterContractsByRole,
@@ -45,6 +53,9 @@ import {
   CONTRACT_STATUS_LABELS,
   PIPELINE_CATEGORY_LABELS,
 } from "@/lib/types";
+
+type ContractSortKey = "clientName" | "assignee";
+type SortDirection = "asc" | "desc";
 
 const emptyForm = (): ContractInput => ({
   clientName: "",
@@ -73,6 +84,8 @@ export function ContractsManager() {
   const { canManageContractTerms, currentUser, activeRole } = useRole();
   const { contracts, teams, partners, taskChannels, addContract, updateContract, deleteContract } = data;
   const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<ContractSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDirection>("asc");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Contract | null>(null);
   const [form, setForm] = useState<ContractInput>(emptyForm());
@@ -105,6 +118,32 @@ export function ContractsManager() {
         getUserName(data, c.assignedStaffId).toLowerCase().includes(q),
     );
   }, [roleContracts, search, data]);
+
+  function toggleSort(key: ContractSortKey) {
+    if (sortKey === key) {
+      setSortDir((dir) => (dir === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir("asc");
+  }
+
+  const sorted = useMemo(() => {
+    if (!sortKey) return filtered;
+
+    return [...filtered].sort((a, b) => {
+      const aValue =
+        sortKey === "clientName"
+          ? a.clientName
+          : getUserName(data, a.assignedStaffId);
+      const bValue =
+        sortKey === "clientName"
+          ? b.clientName
+          : getUserName(data, b.assignedStaffId);
+      const cmp = aValue.localeCompare(bValue, "ko");
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [filtered, sortKey, sortDir, data]);
 
   const summary = useMemo(() => {
     const active = filtered.filter((c) => c.status === "active");
@@ -225,9 +264,21 @@ export function ContractsManager() {
       <DataTable>
         <thead>
           <tr>
-            <Th>업체명</Th>
+            <SortableTh
+              active={sortKey === "clientName"}
+              direction={sortDir}
+              onClick={() => toggleSort("clientName")}
+            >
+              업체명
+            </SortableTh>
             <Th>팀</Th>
-            <Th>담당</Th>
+            <SortableTh
+              active={sortKey === "assignee"}
+              direction={sortDir}
+              onClick={() => toggleSort("assignee")}
+            >
+              담당
+            </SortableTh>
             <Th>계약현황</Th>
             <Th>월 광고비</Th>
             {targetChannels.map((channel) => (
@@ -239,16 +290,28 @@ export function ContractsManager() {
           </tr>
         </thead>
         <tbody>
-          {filtered.map((c) => (
+          {sorted.map((c) => (
             <Tr key={c.id}>
               <Td className="font-medium text-zinc-100">
-                <Link
-                  href={`/contracts/${c.id}`}
-                  className="inline-flex items-center gap-1 hover:text-emerald-400"
-                >
-                  {c.clientName}
-                  <ExternalLink className="h-3 w-3 opacity-50" />
-                </Link>
+                <span className="inline-flex flex-wrap items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort("clientName")}
+                    className={cn(
+                      "text-left transition-colors hover:text-emerald-400 hover:underline",
+                      sortKey === "clientName" && "text-emerald-300",
+                    )}
+                  >
+                    {c.clientName}
+                  </button>
+                  <Link
+                    href={`/contracts/${c.id}`}
+                    className="inline-flex rounded p-0.5 text-zinc-500 hover:text-emerald-400"
+                    aria-label={`${c.clientName} 계약 상세`}
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </Link>
+                </span>
                 {isLeaderManagedContract(dataCtx, c) && (
                   <Badge variant="info" className="ml-2">
                     팀장 담당
@@ -257,7 +320,16 @@ export function ContractsManager() {
               </Td>
               <Td>{getTeamName(dataCtx, c.teamId)}</Td>
               <Td>
-                {getUserName(dataCtx, c.assignedStaffId)}
+                <button
+                  type="button"
+                  onClick={() => toggleSort("assignee")}
+                  className={cn(
+                    "text-left transition-colors hover:text-emerald-400 hover:underline",
+                    sortKey === "assignee" && "text-emerald-300",
+                  )}
+                >
+                  {getUserName(dataCtx, c.assignedStaffId)}
+                </button>
                 {isLeaderManagedContract(dataCtx, c) && (
                   <span className="ml-1 text-xs text-cyan-500/80">(팀장)</span>
                 )}
@@ -361,7 +433,19 @@ export function ContractsManager() {
             <Select
               label="담당 팀 *"
               value={form.teamId}
-              onChange={(e) => setForm({ ...form, teamId: e.target.value })}
+              onChange={(e) => {
+                const teamId = e.target.value;
+                const nextAssignees = contractAssigneeUsers(data, teamId);
+                setForm((prev) => ({
+                  ...prev,
+                  teamId,
+                  assignedStaffId: nextAssignees.some(
+                    (u) => u.id === prev.assignedStaffId,
+                  )
+                    ? prev.assignedStaffId
+                    : (nextAssignees[0]?.id ?? prev.assignedStaffId),
+                }));
+              }}
             >
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -371,7 +455,7 @@ export function ContractsManager() {
             </Select>
           </div>
           <Select
-            label="담당 실무 *"
+            label="담당 (실무·팀장) *"
             value={form.assignedStaffId}
             onChange={(e) =>
               setForm({ ...form, assignedStaffId: e.target.value })
@@ -380,18 +464,28 @@ export function ContractsManager() {
             {assignees.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name}
-                {u.role === "team_leader" ? " (팀장)" : ""}
+                {u.role === "team_leader" ? " (팀장 · 직접 담당)" : ""}
               </option>
             ))}
           </Select>
+          {isLeaderManagedAssignee(data, form.assignedStaffId) && (
+            <LeaderManagedContractNotice />
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
               label="계약 시작일"
               type="date"
               value={form.contractStartDate}
-              onChange={(e) =>
-                setForm({ ...form, contractStartDate: e.target.value })
-              }
+              onChange={(e) => {
+                const contractStartDate = e.target.value;
+                setForm((prev) => ({
+                  ...prev,
+                  contractStartDate,
+                  isExtension:
+                    canEnableExtensionContractCheckbox(contractStartDate) &&
+                    prev.isExtension,
+                }));
+              }}
             />
             <Input
               label="계약 종료일"
@@ -432,10 +526,11 @@ export function ContractsManager() {
               <p className="w-full text-xs text-amber-400/80">
                 임원 · 대표 전용 설정
               </p>
-              <Checkbox
+              <ExtensionContractCheckboxField
+                contractStartDate={form.contractStartDate}
                 label="연장 계약 (재계약 · 성과급 정책 적용)"
                 checked={form.isExtension}
-                onChange={(v) => setForm({ ...form, isExtension: v })}
+                onChange={(isExtension) => setForm({ ...form, isExtension })}
               />
               <Checkbox
                 label="소개 프로모션 (10%)"

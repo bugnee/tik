@@ -21,17 +21,23 @@ import {
   periodFilterLabel,
   summarizePartnerReferralRows,
   type PartnerReferralRow,
+  type PeriodFilterValue,
 } from "@/lib/partner-referral-utils";
 import { PIPELINE_CATEGORY_LABELS, type PipelineCategory } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
-export function PartnerClientStatusPanel() {
+export function PartnerClientStatusPanel({
+  periodFilter: controlledPeriod,
+}: {
+  periodFilter?: PeriodFilterValue;
+} = {}) {
   const data = useData();
   const { currentUser } = useRole();
   const { addPartnerReferralLead } = data;
   const partnerId = currentUser.partnerId ?? "";
 
-  const [periodFilter, setPeriodFilter] = useState(createDefaultPeriodFilter);
+  const [internalPeriod, setInternalPeriod] = useState(createDefaultPeriodFilter);
+  const periodFilter = controlledPeriod ?? internalPeriod;
   const [modalCategory, setModalCategory] = useState<PipelineCategory | "all" | null>(
     null,
   );
@@ -83,11 +89,13 @@ export function PartnerClientStatusPanel() {
         </p>
       </div>
 
-      <PeriodFilterBar
-        value={periodFilter}
-        onChange={setPeriodFilter}
-        summary={`${periodFilterLabel(periodFilter)} · ${summary.count}건 · 계약금액 ${formatKRW(summary.totalMonthlyFee)} · 수수료 ${formatKRW(summary.totalCommission)}`}
-      />
+      {!controlledPeriod && (
+        <PeriodFilterBar
+          value={periodFilter}
+          onChange={setInternalPeriod}
+          summary={`${periodFilterLabel(periodFilter)} · ${summary.count}건 · 계약금액 ${formatKRW(summary.totalMonthlyFee)} · 수수료 ${formatKRW(summary.totalCommission)}`}
+        />
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard

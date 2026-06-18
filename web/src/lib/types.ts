@@ -97,9 +97,9 @@ export interface Contract {
   status: ContractStatus;
   terminationReason?: TerminationReason;
   terminatedAt?: string;
-  /** 연속 재계약(연장) 개월 수 — 4 이상이면 성과급 지급 가능 */
+  /** 연속 재계약(연장) 개월 수 — 4 이상이면 성과급 지급 가능 (해지 후 재계약 시 1부터 재산정) */
   renewalMonthCount: number;
-  /** 담당 업체(고객) 광고비 입금일 — 성과급은 입금일 + 60일 후 지급 */
+  /** 담당 업체(고객) 광고비 입금일 — 익월 정산 주기 기준 */
   lastClientDepositDate?: string;
   /** 연장 계약 전환 후 재무담당 입금 확인 상태 */
   clientDepositStatus?: ClientDepositStatus;
@@ -243,12 +243,31 @@ export interface Expense {
 }
 
 /** 파트너사 집행 분야 */
-export type PartnerCategory =
-  | "press"
-  | "experience"
-  | "influencer"
-  | "blog"
-  | "referral";
+export type PartnerCategory = string;
+
+export type PartnerStatus = "active" | "ended" | "blocked";
+
+export const PARTNER_STATUS_LABELS: Record<PartnerStatus, string> = {
+  active: "활동파트너",
+  ended: "종료파트너",
+  blocked: "불가파트너",
+};
+
+/** 원가·집행 분야별 파트너사 필터 (설정에서 관리) */
+export interface PartnerFilterDefinition {
+  id: PartnerCategory;
+  label: string;
+  sortOrder: number;
+  isActive: boolean;
+  isSystem?: boolean;
+  /** 집행 항목·파트너 목록 등 전역 배지 색상 */
+  accentColor?: TaskChannelAccent;
+}
+
+export type PartnerFilterDefinitionInput = Omit<
+  PartnerFilterDefinition,
+  "isSystem"
+>;
 
 export interface PartnerReferralLead {
   id: string;
@@ -262,6 +281,12 @@ export interface PartnerReferralLead {
 
 export type PartnerReferralLeadInput = Omit<PartnerReferralLead, "id">;
 
+/** 파트너 채널 링크 · 닉네임 (최대 3세트) */
+export interface PartnerLinkSlot {
+  url?: string;
+  nickname?: string;
+}
+
 export interface Partner {
   id: string;
   companyName: string;
@@ -269,12 +294,20 @@ export interface Partner {
   contactName?: string;
   phone?: string;
   email?: string;
+  /** 우리 조직 담당자 (실무·팀장 등) */
+  internalManagerUserId?: string;
+  bankName?: string;
   bankAccount: string;
   accountHolder: string;
+  /** 파트너 링크 · 닉네임 (3세트) */
+  linkSlots: PartnerLinkSlot[];
   /** 기본 단가 (건당/월, 원) — 참고용 */
   unitPrice?: number;
+  /** 파트너 등록일 */
+  registeredAt?: string;
   memo?: string;
-  isActive: boolean;
+  /** 활동 · 종료 · 불가 (원가 등록은 활동파트너만) */
+  status: PartnerStatus;
 }
 
 export type WorkOrderTaskType = string;
@@ -377,6 +410,104 @@ export interface WorkOrder {
   createdAt: string;
 }
 
+/** 체험단 모집 · 일정 조율 상태 */
+export type ExperienceSchedulingStatus =
+  | "draft"
+  | "coordinating"
+  | "confirmed"
+  | "recruiting"
+  | "completed"
+  | "cancelled";
+
+export interface ExperienceRecruitmentCriteria {
+  targetHeadcount: number;
+  category?: string;
+  requirements?: string;
+  providedBenefit?: string;
+  notes?: string;
+}
+
+export interface ExperienceScheduleProposal {
+  id: string;
+  proposedByUserId: string;
+  visitDate: string;
+  visitTime?: string;
+  visitEndTime?: string;
+  note?: string;
+  createdAt: string;
+  status: "pending" | "accepted" | "rejected";
+}
+
+export interface ExperienceParticipant {
+  id: string;
+  /** 블로그명 */
+  blogName?: string;
+  name: string;
+  contact?: string;
+  /** 체험일 (개별 참가자) */
+  experienceDate?: string;
+  /** 참가 인원 */
+  headcount?: number;
+  memo?: string;
+  /** @deprecated blogName 사용 권장 */
+  snsHandle?: string;
+  /** 포스팅 URL */
+  postUrl?: string;
+  /** 포스팅 등록일 */
+  postRegisteredAt?: string;
+  registeredAt: string;
+  registeredByUserId: string;
+}
+
+export interface ExperienceCampaign {
+  id: string;
+  contractId: string;
+  workOrderId?: string;
+  title: string;
+  sequence: number;
+  criteria: ExperienceRecruitmentCriteria;
+  schedulingStatus: ExperienceSchedulingStatus;
+  proposals: ExperienceScheduleProposal[];
+  confirmedVisitDate?: string;
+  confirmedVisitTime?: string;
+  confirmedVisitEndTime?: string;
+  participants: ExperienceParticipant[];
+  sentToClientAt?: string;
+  confirmedAt?: string;
+  confirmedByUserId?: string;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ExperienceParticipantInput = Omit<
+  ExperienceParticipant,
+  "id" | "registeredAt" | "registeredByUserId"
+>;
+
+export type ExperienceParticipantUpdate = Partial<ExperienceParticipantInput>;
+
+/** 체험단 모집 분야 — 분야별 담당 임원·팀장 (설정에서 관리) */
+export interface ExperienceFieldDefinition {
+  id: string;
+  label: string;
+  executiveUserId?: string;
+  teamLeaderUserId?: string;
+  sortOrder: number;
+  isActive: boolean;
+  isSystem?: boolean;
+}
+
+export type ExperienceFieldDefinitionInput = Omit<
+  ExperienceFieldDefinition,
+  "isSystem"
+>;
+
+export type ExperienceScheduleProposalInput = Omit<
+  ExperienceScheduleProposal,
+  "id" | "createdAt" | "status" | "proposedByUserId"
+>;
+
 export interface ExtensionApproval {
   id: string;
   contractId: string;
@@ -396,7 +527,7 @@ export type BonusPaymentStage =
 
 /** CEO→임원→팀장→담당 성과급 % 한도 (상위 한도 내에서만 하위 설정 가능) */
 export interface BonusPolicySettings {
-  /** CEO가 임원별로 설정하는 임원 성과급 한도 (%) */
+  /** CEO가 임원별로 설정하는 임직원 성과금 한도 (%) */
   executiveMaxPercent: Record<string, number>;
   /** 임원이 팀장별로 설정하는 담당 배분 한도 (%) */
   teamLeaderMaxPercent: Record<string, number>;
@@ -419,7 +550,9 @@ export interface BonusPayment {
   totalAmount: number;
   /** 성과급 산정 기준 업체 입금일 */
   clientDepositDate: string;
-  /** 업체 입금일 + 60일 — 실제 지급 가능일 */
+  /** 정산 마감일 (매월 15일) — 해당 주기 확정 기한 */
+  closingDeadline: string;
+  /** 급여 합산 지급 예정일 (매월 25일) */
   scheduledPayDate: string;
   stage: BonusPaymentStage;
   requestedBy?: string;
@@ -444,6 +577,64 @@ export interface FundBudget {
   operatingReserve: number;
 }
 
+export type WorkEvaluationCriterion =
+  | "executionProgress"
+  | "extensionRate"
+  | "contractVolume";
+
+export interface WorkEvaluationScores {
+  executionProgress: number;
+  extensionRate: number;
+  contractVolume: number;
+}
+
+/** 자동 산출 실적 원본 */
+export interface WorkEvaluationMetrics {
+  executionProgressPercent: number;
+  extensionRatePercent: number;
+  contractAmountTotal: number;
+  contractCount: number;
+}
+
+export interface WorkEvaluation {
+  id: string;
+  period: string;
+  evaluateeId: string;
+  evaluatorId: string;
+  /** 실행 진행율 · 재계약율 · 계약금액 기반 자동 점수 */
+  scores: WorkEvaluationScores;
+  metrics: WorkEvaluationMetrics;
+  /** 임원·대표 추가 평가 (1~5) */
+  supplementalScore?: number;
+  overallScore: number;
+  comment?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type WorkEvaluationInput = Omit<
+  WorkEvaluation,
+  "id" | "overallScore" | "createdAt" | "updatedAt"
+>;
+
+export const WORK_EVALUATION_CRITERIA: Record<
+  WorkEvaluationCriterion,
+  { label: string; description: string }
+> = {
+  executionProgress: {
+    label: "실행 업무 진행율",
+    description: "담당 계약 실행·워크오더 가중 진행률",
+  },
+  extensionRate: {
+    label: "재계약율",
+    description: "연장(재계약) 계약 비중",
+  },
+  contractVolume: {
+    label: "계약금액",
+    description: "담당 활성 계약 월 광고비 합계",
+  },
+};
+
 export interface AppData {
   users: User[];
   teams: Team[];
@@ -461,11 +652,15 @@ export interface AppData {
   accountProfiles: AccountProfile[];
   taskChannels: TaskChannelDefinition[];
   expenseCategories: ExpenseCategoryDefinition[];
+  partnerFilterDefinitions: PartnerFilterDefinition[];
+  experienceFieldDefinitions: ExperienceFieldDefinition[];
   placeCredentials: PlaceCredentials[];
   qaThreads: QaThread[];
   qaMessages: QaMessage[];
   postLinkOpinions: PostLinkOpinion[];
   partnerReferralLeads: PartnerReferralLead[];
+  experienceCampaigns: ExperienceCampaign[];
+  workEvaluations: WorkEvaluation[];
 }
 
 export interface TeamMemberStats {
@@ -507,18 +702,33 @@ export const BONUS_STAGE_LABELS: Record<BonusPaymentStage, string> = {
   pending_team_leader: "팀장 결재 대기",
   pending_executive: "임원 결재 대기",
   pending_ceo: "대표 결재 대기",
-  ceo_confirmed: "지급 대기 (대표 승인 · 예정일 도래 시 지급)",
-  paid: "지급 완료",
+  ceo_confirmed: "마감 확정 · 급여 합산 대기",
+  paid: "급여 합산 지급 완료",
   rejected: "반려",
 };
 
 export const BONUS_ELIGIBILITY_MIN_RENEWAL_MONTHS = 4;
 
-/** 담당 업체 입금 후 성과급 지급까지 대기 일수 */
-export const BONUS_PAYMENT_DELAY_DAYS = 60;
+/** 입금 확인 후 익월 정산 주기 반영 */
+export const BONUS_PAYMENT_DELAY_MONTHS = 1;
+
+/** UI 안내용 (입금 → 익월 정산) */
+export const BONUS_PAYMENT_DELAY_LABEL = "익월";
+
+/** 성과급 정산 마감일 (매월) */
+export const BONUS_MONTHLY_CLOSING_DAY = 15;
+
+/** 급여 합산 지급일 (매월) */
+export const BONUS_SALARY_PAY_DAY = 25;
+
+/** 성과급 금액 표기 */
+export const BONUS_AMOUNT_TAX_LABEL = "(세전)";
+
+export const BONUS_PAY_SCHEDULE_SUMMARY =
+  "매월 15일 마감 · 25일 급여 합산 지급";
 
 export const BONUS_PAY_POLICY_NOTICE =
-  "성과급은 담당 업체(고객) 광고비 입금 확인 후 60일이 경과한 날에 지급됩니다.";
+  "성과급(세전)은 업체 광고비 입금 확인 후 익월 정산되며, 매월 15일까지 마감·확정 후 해당 월 25일 급여에 합산 지급됩니다.";
 
 export const PAYOUT_LABELS: Record<PayoutStatus, string> = {
   unpaid: "미지급",

@@ -8,6 +8,7 @@ import {
   Calendar,
   ChevronRight,
   ClipboardList,
+  ExternalLink,
   History,
   MessageSquare,
   Pencil,
@@ -32,11 +33,14 @@ import {
 } from "@/components/ui/DataTable";
 import { Input, Select, Textarea } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
+import { TabBar } from "@/components/ui/TabBar";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { formatKRW } from "@/lib/finance";
 import {
   calcBonusAmounts,
+  calcBonusClosingDeadline,
   calcScheduledPayDate,
+  formatBonusKRW,
   getEligibilityMessage,
   isBonusEligible,
 } from "@/lib/bonus-utils";
@@ -93,6 +97,7 @@ import {
 import { daysUntil } from "@/lib/contract-lifecycle";
 import {
   canEditContractTerms,
+  canRecontractAfterTermination,
   type ContractTermsChangeMode,
   type ContractTermsFormValues,
 } from "@/lib/contract-terms-utils";
@@ -108,12 +113,12 @@ import { cn } from "@/lib/cn";
 
 type Tab = "overview" | "executions" | "expenses" | "extension" | "history";
 
-const TABS: { id: Tab; label: string; icon: typeof Building2 }[] = [
-  { id: "overview", label: "계약 현황", icon: Building2 },
-  { id: "executions", label: "실행 진행", icon: ClipboardList },
-  { id: "expenses", label: "집행 원가", icon: Receipt },
-  { id: "extension", label: "연장 신청", icon: RefreshCw },
-  { id: "history", label: "계약 기록", icon: History },
+const CONTRACT_TABS = [
+  { id: "overview" as const, label: "계약 현황", icon: Building2, accent: "cyan" as const },
+  { id: "executions" as const, label: "실행 진행", icon: ClipboardList, accent: "emerald" as const },
+  { id: "expenses" as const, label: "집행 원가", icon: Receipt, accent: "amber" as const },
+  { id: "extension" as const, label: "연장 신청", icon: RefreshCw, accent: "violet" as const },
+  { id: "history" as const, label: "계약 기록", icon: History, accent: "sky" as const },
 ];
 
 const emptyExecution = (contractId: string): ExecutionInput => ({
@@ -250,11 +255,19 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
   const bonusAmounts = contract.isExtension
     ? calcBonusAmounts(contract, data.bonusPolicy, data)
     : null;
-  const staffBonus = bonusAmounts?.staffBonusAmount ?? 0;
-  const staffPct = bonusAmounts?.staffPercentApplied ?? 0;
+  const leaderManaged = isLeaderManagedContract(data, contract);
+  const expectedBonus = leaderManaged
+    ? (bonusAmounts?.teamLeaderBonusAmount ?? 0)
+    : (bonusAmounts?.staffBonusAmount ?? 0);
+  const expectedPct = leaderManaged
+    ? (bonusAmounts?.teamLeaderPercentApplied ?? 0)
+    : (bonusAmounts?.staffPercentApplied ?? 0);
   const bonusEligible = isBonusEligible(contract);
   const scheduledBonusPayDate = contract.lastClientDepositDate
     ? calcScheduledPayDate(contract.lastClientDepositDate)
+    : undefined;
+  const scheduledBonusClosingDate = contract.lastClientDepositDate
+    ? calcBonusClosingDeadline(contract.lastClientDepositDate)
     : undefined;
   const canWriteMemo =
     activeRole !== "client" && activeRole !== "partner";
@@ -285,6 +298,10 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
     contract.status === "active" &&
     canEditContractTerms(data, contract, activeRole, currentUser.id);
 
+  const canRecontract =
+    contract &&
+    canRecontractAfterTermination(data, contract, activeRole, currentUser.id);
+
   function handleSaveTerms(
     values: ContractTermsFormValues,
     mode: ContractTermsChangeMode,
@@ -296,14 +313,22 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
       payload.hasReferralPromo = contract.hasReferralPromo;
       payload.referrerPartnerId = contract.referrerPartnerId;
     }
+    if (mode === "recontract") {
+      payload.isExtension = false;
+    }
     updateContract(contractId, payload, { mode });
     ensureContractExecutions(contractId);
     ensureContractWorkOrders(contractId);
     showToast(
-      mode === "renewal"
-        ? "재계약 조건이 적용되었습니다."
-        : "계약 조건이 변경되었습니다.",
+      mode === "recontract"
+        ? "재계약이 적용되었습니다. 성과급은 3개월 경과 후 연장 전환, 4월차부터 지급 대상입니다."
+        : mode === "renewal"
+          ? "재계약 조건이 적용되었습니다."
+          : "계약 조건이 변경되었습니다.",
     );
+    if (mode === "recontract") {
+      setTab("overview");
+    }
   }
 
   function showToast(msg: string) {
@@ -423,6 +448,14 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
             <h1 className="text-2xl font-bold text-zinc-50">
               {contract.clientName}
             </h1>
+            {activeRole !== "partner" && (
+              <Link href={`/contracts/${contractId}/client-portal`}>
+                <Button variant="secondary" size="sm" className="h-8">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  고객사 대시보드 연결
+                </Button>
+              </Link>
+            )}
             {contract.isExtension && <Badge variant="success">연장</Badge>}
             {contract.status === "terminated" && (
               <Badge variant="danger">해지</Badge>
@@ -491,7 +524,7 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
           value={contract.lastClientDepositDate ?? "미등록"}
         />
         <MiniStat
-          label={`성과급 지급 예정 (${staffPct}%)`}
+          label={`성과급(세전) 급여 합산 (${expectedPct}%)`}
           value={
             scheduledBonusPayDate
               ? scheduledBonusPayDate
@@ -512,7 +545,7 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
         <Card>
           <CardHeader
             title="업체 입금일 등록"
-            subtitle="광고비 입금 확인일 · 성과급은 입금 + 60일 후 지급"
+            subtitle="광고비 입금 확인일 · 15일 마감 · 25일 급여 합산 지급(세전)"
           />
           <div className="flex flex-wrap items-end gap-3">
             <Input
@@ -540,6 +573,7 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
             {contract.lastClientDepositDate && scheduledBonusPayDate && (
               <BonusPayDateLine
                 clientDepositDate={contract.lastClientDepositDate}
+                closingDeadline={scheduledBonusClosingDate}
                 scheduledPayDate={scheduledBonusPayDate}
               />
             )}
@@ -547,24 +581,35 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
         </Card>
       )}
 
-      <div className="flex gap-1 overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/40 p-1">
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            className={cn(
-              "flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-              tab === id
-                ? "bg-emerald-500/15 text-emerald-400"
-                : "text-zinc-500 hover:text-zinc-300",
+      <TabBar active={tab} onChange={setTab} items={CONTRACT_TABS} />
+
+      {contract.status === "terminated" && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardHeader
+            title="계약 해지됨"
+            subtitle="성과급 지급 이력이 있던 고객사도 재계약 시 회차가 초기화됩니다"
+          />
+          <div className="space-y-3 px-1 pb-2">
+            <p className="text-sm text-zinc-400">
+              재계약 후 새 시작일 기준{" "}
+              <strong className="text-zinc-200">3개월 경과</strong> 시 연장·성과급
+              정책 적용,{" "}
+              <strong className="text-zinc-200">4월차부터</strong> 성과급 지급
+              대상입니다.
+            </p>
+            {canRecontract ? (
+              <Button onClick={() => setTermsModalMode("recontract")}>
+                <RefreshCw className="h-4 w-4" />
+                해지 후 재계약
+              </Button>
+            ) : (
+              <p className="text-xs text-zinc-500">
+                재계약은 임원·대표 또는 해당 팀 담당자만 설정할 수 있습니다.
+              </p>
             )}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
-      </div>
+          </div>
+        </Card>
+      )}
 
       {tab === "overview" && (
         <>
@@ -661,7 +706,7 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
                 label="연장 계약"
                 value={
                   contract.isExtension
-                    ? `예 (${staffPct}% · ${getEligibilityMessage(contract)})`
+                    ? `예 (${expectedPct}% · ${getEligibilityMessage(contract)})`
                     : "아니오"
                 }
                 tone={contract.isExtension ? "success" : "muted"}
@@ -807,14 +852,36 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
               <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 text-center">
                 <p className="font-medium text-emerald-300">연장 계약 확정</p>
                 <p className="mt-1 text-sm text-zinc-500">
-                  재계약 {contract.renewalMonthCount}월차 ·{" "}
-                  {getEligibilityMessage(contract)}
+                  재계약 {contract.renewalMonthCount}월차
                 </p>
-                {bonusEligible && scheduledBonusPayDate && (
-                  <p className="mt-2 text-sm text-emerald-400/80">
-                    월 {formatKRW(contract.monthlyFee)} × {staffPct}% ={" "}
-                    {formatKRW(staffBonus)} (예상) · 지급 예정{" "}
-                    {scheduledBonusPayDate}
+                {bonusEligible ? (
+                  <>
+                    <Badge variant="success" className="mt-3">
+                      성과금 지급 대상
+                    </Badge>
+                    <div className="mx-auto mt-4 max-w-sm rounded-lg border border-emerald-500/20 bg-zinc-950/40 px-4 py-3">
+                      <p className="text-xs text-zinc-500">예상 성과금(세전)</p>
+                      <p className="mt-1 text-2xl font-semibold text-emerald-300">
+                        {formatBonusKRW(expectedBonus)}
+                      </p>
+                      <p className="mt-1 text-sm text-zinc-400">
+                        월 {formatKRW(contract.monthlyFee)} × {expectedPct}%
+                      </p>
+                    </div>
+                    {scheduledBonusPayDate ? (
+                      <p className="mt-3 text-sm text-emerald-400/80">
+                        마감 {scheduledBonusClosingDate} · 급여 합산{" "}
+                        {scheduledBonusPayDate}
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-sm text-amber-400/90">
+                        업체 입금일 등록 후 지급 신청 가능
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="mt-2 text-sm text-zinc-500">
+                    {getEligibilityMessage(contract)}
                   </p>
                 )}
               </div>

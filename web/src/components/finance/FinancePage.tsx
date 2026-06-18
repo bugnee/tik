@@ -23,6 +23,7 @@ import { getFinancePayoutQueue } from "@/lib/expense-payout-utils";
 import { PAYOUT_LABELS } from "@/lib/types";
 import Link from "next/link";
 import { FinanceManagerDashboard } from "@/components/dashboard/FinanceManagerDashboard";
+import { DashboardWorkStatusPanel } from "@/components/dashboard/DashboardWorkStatusPanel";
 import { TabBar } from "@/components/ui/TabBar";
 
 export function FinancePage() {
@@ -84,14 +85,17 @@ export function FinancePage() {
           active={tab}
           onChange={setTab}
           items={[
-            { id: "ops", label: "자금 운영", shortLabel: "운영" },
-            { id: "pl", label: "P&L 분석", shortLabel: "P&L" },
+            { id: "ops", label: "자금 운영", shortLabel: "운영", accent: "cyan" },
+            { id: "pl", label: "P&L 분석", shortLabel: "P&L", accent: "emerald" },
           ]}
         />
       )}
 
       {tab === "ops" && activeRole === "finance_manager" ? (
-        <FinanceManagerDashboard embedded />
+        <>
+          <DashboardWorkStatusPanel />
+          <FinanceManagerDashboard embedded />
+        </>
       ) : (
         <>
           <PLSection breakdown={pl} unpaidTotal={unpaidTotal} />
@@ -125,9 +129,9 @@ function PLSection({
         ]
       : []),
     { label: "모든 비용 합계", value: breakdown.totalCost, sign: "-" },
-    { label: "담당자 연장 성과급 (정책 %)", value: breakdown.staffBonus, sign: "-" },
-    { label: "팀장 연장 성과급 (정책 %)", value: breakdown.teamLeaderBonus, sign: "-" },
-    { label: "임원 연장 성과급 (정책 %)", value: breakdown.executiveBonus, sign: "-" },
+    { label: "담당자 연장 성과급(세전)", value: breakdown.staffBonus, sign: "-" },
+    { label: "팀장 연장 성과급(세전)", value: breakdown.teamLeaderBonus, sign: "-" },
+    { label: "임직원 연장 성과금(세전)", value: breakdown.executiveBonus, sign: "-" },
     { label: "외부 소개비 (10%)", value: breakdown.referralFee, sign: "-" },
   ];
 
@@ -141,7 +145,7 @@ function PLSection({
       <Card className="lg:col-span-2" glow>
         <CardHeader
           title="전사 P&L · 순이익"
-          subtitle="총매출 − 파트너비 · 전체 비용 − 성과급 − 소개비"
+          subtitle="총매출 − 파트너비 · 전체 비용 − 성과급(세전) − 소개비 · 15일 마감 · 25일 급여 합산"
         />
         <div className="space-y-2">
           {rows.map((row) => (

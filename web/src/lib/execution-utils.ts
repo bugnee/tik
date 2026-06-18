@@ -16,6 +16,55 @@ export const DEADLINE_STAGE_DESC: Record<DeadlineStage, string> = {
   overdue: "마감 경과",
 };
 
+export type DeadlineStageFilter = DeadlineStage | "completed" | "all";
+
+export const DEADLINE_STAGE_STYLES: Record<
+  DeadlineStage | "completed",
+  { border: string; bg: string; text: string }
+> = {
+  safe: {
+    border: "border-emerald-500/40",
+    bg: "bg-emerald-500/10",
+    text: "text-emerald-400",
+  },
+  warning: {
+    border: "border-amber-500/40",
+    bg: "bg-amber-500/10",
+    text: "text-amber-400",
+  },
+  urgent: {
+    border: "border-orange-500/40",
+    bg: "bg-orange-500/10",
+    text: "text-orange-400",
+  },
+  overdue: {
+    border: "border-rose-500/40",
+    bg: "bg-rose-500/10",
+    text: "text-rose-400",
+  },
+  completed: {
+    border: "border-cyan-500/40",
+    bg: "bg-cyan-500/10",
+    text: "text-cyan-400",
+  },
+};
+
+export function getDeadlineStageLabel(
+  stage: DeadlineStage | "completed",
+): string {
+  if (stage === "completed") return "완료";
+  return DEADLINE_STAGE_LABELS[stage];
+}
+
+export function getDeadlineStageBadgeVariant(
+  stage: DeadlineStage | "completed",
+): "success" | "warning" | "danger" | "info" {
+  if (stage === "completed") return "info";
+  if (stage === "safe") return "success";
+  if (stage === "overdue") return "danger";
+  return "warning";
+}
+
 export function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }

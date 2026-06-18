@@ -15,7 +15,12 @@ import {
   getDepositConfirmContracts,
   resolveClientDepositStatus,
 } from "@/lib/client-deposit-utils";
-import { calcBonusAmounts, calcScheduledPayDate } from "@/lib/bonus-utils";
+import {
+  calcBonusAmounts,
+  calcBonusClosingDeadline,
+  calcScheduledPayDate,
+  formatBonusKRW,
+} from "@/lib/bonus-utils";
 import { isLeaderManagedContract } from "@/lib/contract-access-utils";
 import { formatKRW } from "@/lib/finance";
 import { getTeamName, getUserName } from "@/lib/selectors";
@@ -39,24 +44,24 @@ function BonusDepositAmountBlock({
   return (
     <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
       <p className="text-xs font-semibold text-emerald-300">
-        성과급 지급 예정액 {formatKRW(amounts.totalAmount)}
+        성과급(세전) 지급 예정액 {formatBonusKRW(amounts.totalAmount)}
       </p>
       <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
         {leaderManaged ? (
           <>
             <span className="text-cyan-500/90">팀장 직접 담당</span>
-            {" · "}팀장 {formatKRW(amounts.teamLeaderBonusAmount)} (
+            {" · "}팀장 {formatBonusKRW(amounts.teamLeaderBonusAmount)} (
             {amounts.teamLeaderPercentApplied}%)
-            {" · "}임원 {formatKRW(amounts.executiveBonusAmount)} (
+            {" · "}임직원 {formatBonusKRW(amounts.executiveBonusAmount)} (
             {amounts.executivePercentApplied}%)
           </>
         ) : (
           <>
-            담당 {formatKRW(amounts.staffBonusAmount)} (
+            담당 {formatBonusKRW(amounts.staffBonusAmount)} (
             {amounts.staffPercentApplied}%)
-            {" · "}팀장 {formatKRW(amounts.teamLeaderBonusAmount)} (
+            {" · "}팀장 {formatBonusKRW(amounts.teamLeaderBonusAmount)} (
             {amounts.teamLeaderPercentApplied}%)
-            {" · "}임원 {formatKRW(amounts.executiveBonusAmount)} (
+            {" · "}임직원 {formatBonusKRW(amounts.executiveBonusAmount)} (
             {amounts.executivePercentApplied}%)
           </>
         )}
@@ -102,6 +107,9 @@ function ClientDepositModal({
           const scheduled = c.lastClientDepositDate
             ? calcScheduledPayDate(c.lastClientDepositDate)
             : null;
+          const closing = c.lastClientDepositDate
+            ? calcBonusClosingDeadline(c.lastClientDepositDate)
+            : null;
 
           return (
             <div
@@ -125,8 +133,8 @@ function ClientDepositModal({
                   </p>
                   {c.lastClientDepositDate && scheduled && (
                     <p className="mt-1 text-xs text-cyan-400/90">
-                      입금일 {c.lastClientDepositDate} → 성과급 지급 예정{" "}
-                      {scheduled}
+                      입금일 {c.lastClientDepositDate} → 마감 {closing} → 급여
+                      합산 {scheduled}
                     </p>
                   )}
                   <BonusDepositAmountBlock contract={c} data={data} />
@@ -276,10 +284,12 @@ export function ClientDepositConfirmPanel() {
 /** 성과급 결재 카드 — 입금확인 업무 + 숫자 클릭 시 고객사 목록 */
 export function ClientDepositTaskLine({
   contractId,
+  closingDeadline,
   scheduledPayDate,
   paidAt,
 }: {
   contractId: string;
+  closingDeadline?: string;
   scheduledPayDate?: string;
   paidAt?: string;
 }) {
@@ -311,7 +321,7 @@ export function ClientDepositTaskLine({
   if (paidAt) {
     return (
       <p className="text-xs text-emerald-400/90">
-        입금확인 완료 · 실제 지급일 {paidAt}
+        입금확인 완료 · 급여 합산 지급 {paidAt}
       </p>
     );
   }
@@ -339,14 +349,25 @@ export function ClientDepositTaskLine({
         )}
         {scheduledPayDate && status === "completed" && (
           <span className="text-zinc-500">
-            · 입금 확인 → 지급 예정{" "}
+            · 입금 확인
+            {closingDeadline ? (
+              <>
+                {" "}
+                → 마감{" "}
+                <span className="font-medium text-amber-400/90">
+                  {closingDeadline}
+                </span>
+              </>
+            ) : null}
+            {" "}
+            → 급여 합산{" "}
             <span className="font-medium text-cyan-400">{scheduledPayDate}</span>
             {contract && (
               <>
                 {" "}
                 ·{" "}
                 <span className="font-medium text-emerald-400">
-                  {formatKRW(
+                  {formatBonusKRW(
                     calcBonusAmounts(contract, data.bonusPolicy, data)
                       .totalAmount,
                   )}

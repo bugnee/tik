@@ -13,6 +13,8 @@ import { createSeedData } from "@/lib/seed-data";
 import {
   addDays,
   calcBonusAmounts,
+  calcBonusClosingDeadline,
+  canRequestBonus,
   createBonusPaymentFromContract,
   calcScheduledPayDate,
   isBonusPayDue,
@@ -27,6 +29,11 @@ import {
   findExecutionForWorkOrder,
 } from "@/lib/execution-generation-utils";
 import { syncAllContractProgress } from "@/lib/selectors";
+import {
+  buildWorkEvaluationInput,
+  computeAutoEvaluationScores,
+  computeEvaluationMetrics,
+} from "@/lib/work-evaluation-utils";
 import {
   buildExpenseDescription,
   buildReferralCostLines,
@@ -62,6 +69,7 @@ import type {
   UserInput,
   WorkOrder,
   WorkOrderInput,
+  WorkEvaluationInput,
   AccountProfile,
   UserRole,
   ClientDepositStatus,
@@ -71,16 +79,32 @@ import type {
   PostLinkOpinionInput,
   QaMessage,
   QaThread,
+  ExperienceCampaign,
+  ExperienceParticipantInput,
+  ExperienceParticipantUpdate,
+  ExperienceScheduleProposalInput,
 } from "@/lib/types";
 import type { AuthSessionUser } from "@/lib/auth-utils";
 import { canUserRequestExpense } from "@/lib/expense-payout-utils";
 import {
+  applyRecontractAfterTermination,
   applyRenewalSideEffects,
   hasMaterialTermsChange,
   termsChangeRecordNote,
   type ContractTermsChangeMode,
 } from "@/lib/contract-terms-utils";
 import { normalizeExpenseCategories } from "@/lib/expense-category-utils";
+import {
+  applyAcceptedProposal,
+  buildProposal,
+  createExperienceCampaignDraft,
+  createParticipantRecord,
+  normalizeExperienceCampaigns,
+  normalizeExperienceParticipant,
+} from "@/lib/experience-campaign-utils";
+import { normalizePartnerFilters } from "@/lib/partner-filter-utils";
+import { normalizeExperienceFields } from "@/lib/experience-field-utils";
+import { normalizePartner, normalizePartners } from "@/lib/partner-utils";
 import {
   getContractTargetChannels,
   getContractTargetCount,
@@ -89,6 +113,10 @@ import {
 import type {
   ExpenseCategoryDefinition,
   ExpenseCategoryInput,
+  PartnerFilterDefinition,
+  PartnerFilterDefinitionInput,
+  ExperienceFieldDefinition,
+  ExperienceFieldDefinitionInput,
   TaskChannelDefinition,
   TaskChannelInput,
 } from "@/lib/types";
@@ -97,7 +125,7 @@ import {
   canReplyQa,
 } from "@/lib/place-qa-utils";
 
-const STORAGE_KEY = "tripit-erp-v12";
+const STORAGE_KEY = "tripit-erp-v15";
 
 /** normalizeContract에서 매번 시드 전체를 만들지 않도록 고정 기본값 사용 */
 const DEFAULT_CONTRACT_START = "2026-06-01";
@@ -204,6 +232,22 @@ interface DataContextValue extends AppData {
     input: Partial<ExpenseCategoryInput>,
   ) => void;
   deleteExpenseCategory: (id: string) => boolean;
+  addPartnerFilterDefinition: (
+    input: PartnerFilterDefinitionInput,
+  ) => PartnerFilterDefinition;
+  updatePartnerFilterDefinition: (
+    id: string,
+    input: Partial<PartnerFilterDefinitionInput>,
+  ) => void;
+  deletePartnerFilterDefinition: (id: string) => boolean;
+  addExperienceFieldDefinition: (
+    input: ExperienceFieldDefinitionInput,
+  ) => ExperienceFieldDefinition;
+  updateExperienceFieldDefinition: (
+    id: string,
+    input: Partial<ExperienceFieldDefinitionInput>,
+  ) => void;
+  deleteExperienceFieldDefinition: (id: string) => boolean;
   upsertPlaceCredentials: (
     contractId: string,
     input: PlaceCredentialsInput,
@@ -218,8 +262,53 @@ interface DataContextValue extends AppData {
   replyQaThread: (threadId: string, body: string, userId: string) => QaMessage;
   closeQaThread: (threadId: string, userId: string) => void;
   addPostLinkOpinion: (input: PostLinkOpinionInput) => PostLinkOpinion;
+  addExperienceCampaign: (
+    contractId: string,
+    createdByUserId: string,
+  ) => ExperienceCampaign;
+  updateExperienceCampaign: (
+    id: string,
+    input: Partial<
+      Pick<
+        ExperienceCampaign,
+        | "criteria"
+        | "schedulingStatus"
+        | "title"
+        | "workOrderId"
+        | "confirmedVisitDate"
+        | "confirmedVisitTime"
+        | "confirmedVisitEndTime"
+      >
+    >,
+  ) => void;
+  sendExperienceCampaignToClient: (id: string) => void;
+  proposeExperienceSchedule: (
+    campaignId: string,
+    userId: string,
+    input: ExperienceScheduleProposalInput,
+  ) => void;
+  acceptExperienceProposal: (
+    campaignId: string,
+    proposalId: string,
+    userId: string,
+  ) => void;
+  addExperienceParticipant: (
+    campaignId: string,
+    userId: string,
+    input: ExperienceParticipantInput,
+  ) => void;
+  removeExperienceParticipant: (
+    campaignId: string,
+    participantId: string,
+  ) => void;
+  updateExperienceParticipant: (
+    campaignId: string,
+    participantId: string,
+    input: ExperienceParticipantUpdate,
+  ) => void;
   addContractMemo: (contractId: string, body: string, authorUserId: string) => ContractMemo | null;
   deleteContractMemo: (id: string) => void;
+  upsertWorkEvaluation: (input: WorkEvaluationInput) => void;
   resetData: () => void;
 }
 
@@ -274,6 +363,8 @@ function normalizeBonusPayment(
   const base: BonusPayment = {
     ...payment,
     clientDepositDate,
+    closingDeadline:
+      payment.closingDeadline ?? calcBonusClosingDeadline(clientDepositDate),
     scheduledPayDate:
       payment.scheduledPayDate ?? calcScheduledPayDate(clientDepositDate),
   };
@@ -315,12 +406,18 @@ function normalizeAppData(data: AppData): AppData {
     contractRecords: data.contractRecords ?? seed.contractRecords,
     contractMemos: data.contractMemos ?? seed.contractMemos ?? [],
     bonusPolicy,
-    partners: data.partners ?? seed.partners,
+    partners: normalizePartners(data.partners ?? seed.partners),
     workOrders: data.workOrders ?? seed.workOrders,
     accountProfiles: data.accountProfiles ?? seed.accountProfiles,
     taskChannels: normalizeTaskChannels(data.taskChannels ?? seed.taskChannels),
     expenseCategories: normalizeExpenseCategories(
       data.expenseCategories ?? seed.expenseCategories,
+    ),
+    partnerFilterDefinitions: normalizePartnerFilters(
+      data.partnerFilterDefinitions ?? seed.partnerFilterDefinitions,
+    ),
+    experienceFieldDefinitions: normalizeExperienceFields(
+      data.experienceFieldDefinitions ?? seed.experienceFieldDefinitions,
     ),
     placeCredentials: data.placeCredentials ?? seed.placeCredentials ?? [],
     qaThreads: data.qaThreads ?? seed.qaThreads ?? [],
@@ -328,6 +425,10 @@ function normalizeAppData(data: AppData): AppData {
     postLinkOpinions: data.postLinkOpinions ?? seed.postLinkOpinions ?? [],
     partnerReferralLeads:
       data.partnerReferralLeads ?? seed.partnerReferralLeads ?? [],
+    experienceCampaigns: normalizeExperienceCampaigns(
+      data.experienceCampaigns ?? seed.experienceCampaigns ?? [],
+    ),
+    workEvaluations: data.workEvaluations ?? seed.workEvaluations ?? [],
   };
 }
 
@@ -451,7 +552,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const now = todayISO();
 
         let patch: Partial<ContractInput> = { ...input };
-        if (mode === "renewal" && old) {
+        if (mode === "recontract") {
+          if (!old || old.status !== "terminated") return prev;
+          patch = applyRecontractAfterTermination(old, patch);
+        } else if (mode === "renewal" && old) {
           patch = applyRenewalSideEffects(old, patch);
         }
 
@@ -500,6 +604,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
                 note: termsChangeRecordNote(mode, merged.renewalMonthCount),
               },
             ];
+          } else if (mode === "recontract") {
+            contractRecords = [
+              ...contractRecords,
+              {
+                id: newId("cr"),
+                contractId: id,
+                period: (patch.contractStartDate ?? now).slice(0, 7),
+                assignedStaffId: merged.assignedStaffId,
+                teamId: merged.teamId,
+                startedAt: patch.contractStartDate ?? now,
+                monthlyFee: merged.monthlyFee,
+                isExtension: false,
+                note: termsChangeRecordNote(mode, merged.renewalMonthCount),
+              },
+            ];
           } else if (
             hasMaterialTermsChange(old, merged, prev.taskChannels) &&
             !(
@@ -536,6 +655,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return {
           ...prev,
           contractRecords,
+          ...(mode === "recontract"
+            ? {
+                extensionApprovals: prev.extensionApprovals.filter(
+                  (a) => !(a.contractId === id && a.status === "pending"),
+                ),
+              }
+            : {}),
           contracts: prev.contracts.map((c) =>
             c.id === id ? { ...c, ...patch } : c,
           ),
@@ -603,7 +729,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
               );
             }
 
-            if (targetsChanged || mode === "renewal") {
+            if (targetsChanged || mode === "renewal" || mode === "recontract") {
               const generated = generateWorkOrdersForContract(
                 mergedContract,
                 workOrders,
@@ -870,7 +996,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addPartner = useCallback(
     (input: PartnerInput) => {
-      const partner: Partner = { ...input, id: newId("p") };
+      const partner: Partner = normalizePartner({
+        ...input,
+        id: newId("p"),
+        registeredAt: input.registeredAt ?? todayISO(),
+      });
       persist((prev) => ({ ...prev, partners: [...prev.partners, partner] }));
       return partner;
     },
@@ -882,7 +1012,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       persist((prev) => ({
         ...prev,
         partners: prev.partners.map((p) =>
-          p.id === id ? { ...p, ...input } : p,
+          p.id === id ? normalizePartner({ ...p, ...input }) : p,
         ),
       }));
     },
@@ -899,6 +1029,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ),
         workOrders: prev.workOrders.map((w) =>
           w.partnerId === id ? { ...w, partnerId: undefined } : w,
+        ),
+        partnerReferralLeads: (prev.partnerReferralLeads ?? []).filter(
+          (lead) => lead.partnerId !== id,
+        ),
+        contracts: prev.contracts.map((c) =>
+          c.referrerPartnerId === id
+            ? { ...c, referrerPartnerId: undefined, hasReferralPromo: false }
+            : c,
         ),
       }));
     },
@@ -1802,12 +1940,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       persist((prev) => {
         const contract = prev.contracts.find((c) => c.id === contractId);
         if (!contract || contract.assignedStaffId !== requestedBy) return prev;
-        if (
-          !contract.isExtension ||
-          contract.renewalMonthCount < 4 ||
-          contract.status !== "active" ||
-          !contract.lastClientDepositDate
-        ) {
+        if (!canRequestBonus(contract)) {
           return prev;
         }
 
@@ -1925,6 +2058,107 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return {
           ...prev,
           expenseCategories: prev.expenseCategories.filter((c) => c.id !== id),
+        };
+      });
+      return ok;
+    },
+    [persist],
+  );
+
+  const addPartnerFilterDefinition = useCallback(
+    (input: PartnerFilterDefinitionInput) => {
+      const filter: PartnerFilterDefinition = { ...input };
+      persist((prev) => ({
+        ...prev,
+        partnerFilterDefinitions: [...prev.partnerFilterDefinitions, filter].sort(
+          (a, b) => a.sortOrder - b.sortOrder,
+        ),
+      }));
+      return filter;
+    },
+    [persist],
+  );
+
+  const updatePartnerFilterDefinition = useCallback(
+    (id: string, input: Partial<PartnerFilterDefinitionInput>) => {
+      persist((prev) => ({
+        ...prev,
+        partnerFilterDefinitions: prev.partnerFilterDefinitions
+          .map((f) => (f.id === id ? { ...f, ...input } : f))
+          .sort((a, b) => a.sortOrder - b.sortOrder),
+      }));
+    },
+    [persist],
+  );
+
+  const deletePartnerFilterDefinition = useCallback(
+    (id: string): boolean => {
+      let ok = false;
+      persist((prev) => {
+        const filter = prev.partnerFilterDefinitions.find((f) => f.id === id);
+        if (!filter || filter.isSystem) return prev;
+        const inUse =
+          prev.partners.some((p) => p.categories.includes(id)) ||
+          prev.expenseCategories.some((c) => c.partnerCategory === id) ||
+          prev.taskChannels.some((ch) => ch.partnerCategory === id);
+        if (inUse) return prev;
+        ok = true;
+        return {
+          ...prev,
+          partnerFilterDefinitions: prev.partnerFilterDefinitions.filter(
+            (f) => f.id !== id,
+          ),
+        };
+      });
+      return ok;
+    },
+    [persist],
+  );
+
+  const addExperienceFieldDefinition = useCallback(
+    (input: ExperienceFieldDefinitionInput) => {
+      const field: ExperienceFieldDefinition = { ...input };
+      persist((prev) => ({
+        ...prev,
+        experienceFieldDefinitions: [
+          ...prev.experienceFieldDefinitions,
+          field,
+        ].sort((a, b) => a.sortOrder - b.sortOrder),
+      }));
+      return field;
+    },
+    [persist],
+  );
+
+  const updateExperienceFieldDefinition = useCallback(
+    (id: string, input: Partial<ExperienceFieldDefinitionInput>) => {
+      persist((prev) => ({
+        ...prev,
+        experienceFieldDefinitions: prev.experienceFieldDefinitions
+          .map((f) => (f.id === id ? { ...f, ...input } : f))
+          .sort((a, b) => a.sortOrder - b.sortOrder),
+      }));
+    },
+    [persist],
+  );
+
+  const deleteExperienceFieldDefinition = useCallback(
+    (id: string): boolean => {
+      let ok = false;
+      persist((prev) => {
+        const field = prev.experienceFieldDefinitions.find((f) => f.id === id);
+        if (!field || field.isSystem) return prev;
+        const inUse = (prev.experienceCampaigns ?? []).some((campaign) => {
+          const cat = campaign.criteria.category;
+          return cat === field.id || cat === field.label;
+        });
+        if (inUse) return prev;
+        ok = true;
+        return {
+          ...prev,
+          experienceFieldDefinitions: prev.experienceFieldDefinitions.filter(
+            (f) => f.id !== id,
+          ),
         };
       });
       return ok;
@@ -2074,6 +2308,247 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [persist],
   );
 
+  const addExperienceCampaign = useCallback(
+    (contractId: string, createdByUserId: string): ExperienceCampaign => {
+      let saved: ExperienceCampaign = {
+        id: newId("exc"),
+        contractId,
+        title: "",
+        sequence: 1,
+        criteria: {
+          targetHeadcount: 10,
+          category: "맛집",
+          requirements: "",
+          providedBenefit: "",
+          notes: "",
+        },
+        schedulingStatus: "draft",
+        proposals: [],
+        participants: [],
+        createdByUserId,
+        createdAt: todayISO(),
+        updatedAt: todayISO(),
+      };
+      persist((prev) => {
+        const contract = prev.contracts.find((c) => c.id === contractId);
+        if (!contract) return prev;
+        const draft = createExperienceCampaignDraft(
+          contract,
+          prev.experienceCampaigns ?? [],
+          prev.workOrders,
+          createdByUserId,
+          prev.experienceFieldDefinitions,
+        );
+        saved = { ...draft, id: newId("exc") };
+        return {
+          ...prev,
+          experienceCampaigns: [
+            ...(prev.experienceCampaigns ?? []),
+            saved,
+          ],
+        };
+      });
+      return saved;
+    },
+    [persist],
+  );
+
+  const updateExperienceCampaign = useCallback(
+    (
+      id: string,
+      input: Partial<
+        Pick<
+          ExperienceCampaign,
+          | "criteria"
+          | "schedulingStatus"
+          | "title"
+          | "workOrderId"
+          | "confirmedVisitDate"
+          | "confirmedVisitTime"
+          | "confirmedVisitEndTime"
+        >
+      >,
+    ) => {
+      persist((prev) => ({
+        ...prev,
+        experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
+          c.id === id ? { ...c, ...input, updatedAt: todayISO() } : c,
+        ),
+      }));
+    },
+    [persist],
+  );
+
+  const sendExperienceCampaignToClient = useCallback(
+    (id: string) => {
+      persist((prev) => ({
+        ...prev,
+        experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
+          c.id === id
+            ? {
+                ...c,
+                schedulingStatus: "coordinating" as const,
+                sentToClientAt: todayISO(),
+                updatedAt: todayISO(),
+              }
+            : c,
+        ),
+      }));
+    },
+    [persist],
+  );
+
+  const proposeExperienceSchedule = useCallback(
+    (
+      campaignId: string,
+      userId: string,
+      input: ExperienceScheduleProposalInput,
+    ) => {
+      persist((prev) => {
+        const campaign = (prev.experienceCampaigns ?? []).find(
+          (c) => c.id === campaignId,
+        );
+        if (!campaign || campaign.schedulingStatus === "cancelled") return prev;
+
+        const requester = prev.users.find((u) => u.id === userId);
+        if (!requester) return prev;
+
+        const proposal = buildProposal(input, userId);
+        const nextStatus =
+          campaign.schedulingStatus === "draft"
+            ? ("coordinating" as const)
+            : campaign.schedulingStatus;
+
+        return {
+          ...prev,
+          experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
+            c.id === campaignId
+              ? {
+                  ...c,
+                  schedulingStatus: nextStatus,
+                  proposals: [
+                    ...c.proposals.map((p) =>
+                      p.status === "pending"
+                        ? { ...p, status: "rejected" as const }
+                        : p,
+                    ),
+                    proposal,
+                  ],
+                  updatedAt: todayISO(),
+                }
+              : c,
+          ),
+        };
+      });
+    },
+    [persist],
+  );
+
+  const acceptExperienceProposal = useCallback(
+    (campaignId: string, proposalId: string, userId: string) => {
+      persist((prev) => {
+        const campaign = (prev.experienceCampaigns ?? []).find(
+          (c) => c.id === campaignId,
+        );
+        if (!campaign) return prev;
+        const proposal = campaign.proposals.find((p) => p.id === proposalId);
+        if (!proposal || proposal.status !== "pending") return prev;
+
+        const updated = applyAcceptedProposal(campaign, proposal, userId);
+        let workOrders = prev.workOrders;
+        if (updated.workOrderId && updated.confirmedVisitDate) {
+          workOrders = prev.workOrders.map((o) =>
+            o.id === updated.workOrderId
+              ? { ...o, dueDate: updated.confirmedVisitDate! }
+              : o,
+          );
+        }
+
+        return {
+          ...prev,
+          workOrders,
+          experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
+            c.id === campaignId ? updated : c,
+          ),
+        };
+      });
+    },
+    [persist],
+  );
+
+  const addExperienceParticipant = useCallback(
+    (campaignId: string, userId: string, input: ExperienceParticipantInput) => {
+      persist((prev) => {
+        const campaign = (prev.experienceCampaigns ?? []).find(
+          (c) => c.id === campaignId,
+        );
+        if (!campaign) return prev;
+        const actor = prev.users.find((u) => u.id === userId);
+        if (!actor || !["staff", "team_leader"].includes(actor.role)) {
+          return prev;
+        }
+        const participant = createParticipantRecord(input, userId);
+        return {
+          ...prev,
+          experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
+            c.id === campaignId
+              ? {
+                  ...c,
+                  participants: [...c.participants, participant],
+                  updatedAt: todayISO(),
+                }
+              : c,
+          ),
+        };
+      });
+    },
+    [persist],
+  );
+
+  const removeExperienceParticipant = useCallback(
+    (campaignId: string, participantId: string) => {
+      persist((prev) => ({
+        ...prev,
+        experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
+          c.id === campaignId
+            ? {
+                ...c,
+                participants: c.participants.filter((p) => p.id !== participantId),
+                updatedAt: todayISO(),
+              }
+            : c,
+        ),
+      }));
+    },
+    [persist],
+  );
+
+  const updateExperienceParticipant = useCallback(
+    (
+      campaignId: string,
+      participantId: string,
+      input: ExperienceParticipantUpdate,
+    ) => {
+      persist((prev) => ({
+        ...prev,
+        experienceCampaigns: (prev.experienceCampaigns ?? []).map((c) =>
+          c.id === campaignId
+            ? {
+                ...c,
+                participants: c.participants.map((p) =>
+                  p.id === participantId
+                    ? normalizeExperienceParticipant({ ...p, ...input })
+                    : p,
+                ),
+                updatedAt: todayISO(),
+              }
+            : c,
+        ),
+      }));
+    },
+    [persist],
+  );
+
   const addPostLinkOpinion = useCallback(
     (input: PostLinkOpinionInput) => {
       const opinion: PostLinkOpinion = {
@@ -2136,6 +2611,50 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setData(createSeedData());
   }, []);
 
+  const upsertWorkEvaluation = useCallback((input: WorkEvaluationInput) => {
+    setData((prev) => {
+      const evaluatee = prev.users.find((user) => user.id === input.evaluateeId);
+      const metrics =
+        input.metrics ??
+        (evaluatee ? computeEvaluationMetrics(prev, evaluatee) : input.metrics);
+      const scores =
+        input.scores ??
+        (evaluatee && metrics
+          ? computeAutoEvaluationScores(prev, evaluatee, metrics)
+          : input.scores);
+      const payload = buildWorkEvaluationInput({
+        ...input,
+        metrics: metrics!,
+        scores: scores!,
+      });
+      const existingIndex = (prev.workEvaluations ?? []).findIndex(
+        (item) =>
+          item.period === input.period &&
+          item.evaluatorId === input.evaluatorId &&
+          item.evaluateeId === input.evaluateeId,
+      );
+
+      const next =
+        existingIndex >= 0
+          ? (prev.workEvaluations ?? []).map((item, index) =>
+              index === existingIndex
+                ? {
+                    ...item,
+                    ...payload,
+                    id: item.id,
+                    createdAt: item.createdAt,
+                  }
+                : item,
+            )
+          : [
+              ...(prev.workEvaluations ?? []),
+              { ...payload, id: newId("wev") },
+            ];
+
+      return { ...prev, workEvaluations: next };
+    });
+  }, []);
+
   const updateClientDepositStatus = useCallback(
     (contractId: string, status: ClientDepositStatus, depositDate?: string) => {
       const today = todayISO();
@@ -2161,6 +2680,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           return {
             ...p,
             clientDepositDate: deposit,
+            closingDeadline: calcBonusClosingDeadline(deposit),
             scheduledPayDate: calcScheduledPayDate(deposit),
           };
         });
@@ -2231,13 +2751,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addExpenseCategory,
       updateExpenseCategory,
       deleteExpenseCategory,
+      addPartnerFilterDefinition,
+      updatePartnerFilterDefinition,
+      deletePartnerFilterDefinition,
+      addExperienceFieldDefinition,
+      updateExperienceFieldDefinition,
+      deleteExperienceFieldDefinition,
       upsertPlaceCredentials,
       createQaThread,
       replyQaThread,
       closeQaThread,
       addPostLinkOpinion,
+      addExperienceCampaign,
+      updateExperienceCampaign,
+      sendExperienceCampaignToClient,
+      proposeExperienceSchedule,
+      acceptExperienceProposal,
+      addExperienceParticipant,
+      removeExperienceParticipant,
+      updateExperienceParticipant,
       addContractMemo,
       deleteContractMemo,
+      upsertWorkEvaluation,
       resetData,
     }),
     [
@@ -2298,13 +2833,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addExpenseCategory,
       updateExpenseCategory,
       deleteExpenseCategory,
+      addPartnerFilterDefinition,
+      updatePartnerFilterDefinition,
+      deletePartnerFilterDefinition,
+      addExperienceFieldDefinition,
+      updateExperienceFieldDefinition,
+      deleteExperienceFieldDefinition,
       upsertPlaceCredentials,
       createQaThread,
       replyQaThread,
       closeQaThread,
       addPostLinkOpinion,
+      addExperienceCampaign,
+      updateExperienceCampaign,
+      sendExperienceCampaignToClient,
+      proposeExperienceSchedule,
+      acceptExperienceProposal,
+      addExperienceParticipant,
+      removeExperienceParticipant,
+      updateExperienceParticipant,
       addContractMemo,
       deleteContractMemo,
+      upsertWorkEvaluation,
       resetData,
     ],
   );

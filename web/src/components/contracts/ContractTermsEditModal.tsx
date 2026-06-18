@@ -7,15 +7,22 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, Input, Select } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
+import { LeaderManagedContractNotice } from "@/components/contracts/LeaderManagedContractNotice";
+import { ExtensionContractCheckboxField } from "@/components/contracts/ExtensionContractCheckboxField";
 import type { ContractTermsChangeMode, ContractTermsFormValues } from "@/lib/contract-terms-utils";
-import { contractToTermsForm } from "@/lib/contract-terms-utils";
+import {
+  canEnableExtensionContractCheckbox,
+  contractToTermsForm,
+} from "@/lib/contract-terms-utils";
+import { addDays } from "@/lib/bonus-utils";
+import { isLeaderManagedAssignee } from "@/lib/contract-access-utils";
 import { filterPartnersByCategory, getPartnerName } from "@/lib/partner-utils";
 import {
   getContractTargetChannels,
   getContractTargetCount,
   setContractTargetCount,
 } from "@/lib/task-channel-utils";
-import { staffUsers } from "@/lib/selectors";
+import { contractAssigneeUsers } from "@/lib/selectors";
 import type { Contract } from "@/lib/types";
 
 type ContractTermsEditModalProps = {
@@ -40,7 +47,14 @@ export function ContractTermsEditModal({
     contractToTermsForm(contract),
   );
 
-  const staff = staffUsers(data);
+  const assignees = useMemo(
+    () => contractAssigneeUsers(data, form.teamId || undefined),
+    [data, form.teamId],
+  );
+  const leaderManagedAssignee = isLeaderManagedAssignee(
+    data,
+    form.assignedStaffId,
+  );
   const targetChannels = useMemo(
     () => getContractTargetChannels(taskChannels),
     [taskChannels],
@@ -52,9 +66,20 @@ export function ContractTermsEditModal({
 
   useEffect(() => {
     if (open) {
-      setForm(contractToTermsForm(contract));
+      const base = contractToTermsForm(contract);
+      if (mode === "recontract") {
+        const start = new Date().toISOString().slice(0, 10);
+        setForm({
+          ...base,
+          contractStartDate: start,
+          contractEndDate: addDays(start, 365),
+          isExtension: false,
+        });
+      } else {
+        setForm(base);
+      }
     }
-  }, [open, contract]);
+  }, [open, contract, mode]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -63,11 +88,17 @@ export function ContractTermsEditModal({
   }
 
   const title =
-    mode === "renewal" ? "재계약 · 조건 설정" : "계약 조건 변경";
+    mode === "recontract"
+      ? "해지 후 재계약"
+      : mode === "renewal"
+        ? "재계약 · 조건 설정"
+        : "계약 조건 변경";
   const subtitle =
-    mode === "renewal"
-      ? "새 회차 조건 적용 · 재계약 월차 +1 · 입금 확인 초기화"
-      : "진행 중 계약의 월 광고비 · 집행 목표 · 기간 등 수정";
+    mode === "recontract"
+      ? "성과급 회차 1월차부터 재산정 · 새 시작일 기준 3개월 후 연장 적용 · 4월차부터 지급 대상"
+      : mode === "renewal"
+        ? "새 회차 조건 적용 · 재계약 월차 +1 · 입금 확인 초기화"
+        : "진행 중 계약의 월 광고비 · 집행 목표 · 기간 등 수정";
 
   return (
     <Modal open={open} onClose={onClose} title={title} size="lg">
@@ -81,6 +112,11 @@ export function ContractTermsEditModal({
           {mode === "renewal" && (
             <Badge variant="success" className="ml-2">
               {contract.renewalMonthCount + 1}월차 예정
+            </Badge>
+          )}
+          {mode === "recontract" && (
+            <Badge variant="info" className="ml-2">
+              성과급 1월차부터
             </Badge>
           )}
         </div>
@@ -100,7 +136,19 @@ export function ContractTermsEditModal({
           <Select
             label="담당 팀"
             value={form.teamId}
-            onChange={(e) => setForm({ ...form, teamId: e.target.value })}
+            onChange={(e) => {
+              const teamId = e.target.value;
+              const nextAssignees = contractAssigneeUsers(data, teamId);
+              setForm((prev) => ({
+                ...prev,
+                teamId,
+                assignedStaffId: nextAssignees.some(
+                  (u) => u.id === prev.assignedStaffId,
+                )
+                  ? prev.assignedStaffId
+                  : (nextAssignees[0]?.id ?? prev.assignedStaffId),
+              }));
+            }}
           >
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
@@ -111,27 +159,42 @@ export function ContractTermsEditModal({
         </div>
 
         <Select
-          label="담당 실무"
+          label="담당 (실무·팀장)"
           value={form.assignedStaffId}
           onChange={(e) =>
             setForm({ ...form, assignedStaffId: e.target.value })
           }
         >
-          {staff.map((u) => (
+          {assignees.map((u) => (
             <option key={u.id} value={u.id}>
               {u.name}
+              {u.role === "team_leader" ? " (팀장 · 직접 담당)" : ""}
             </option>
           ))}
         </Select>
+        {leaderManagedAssignee && <LeaderManagedContractNotice />}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
-            label={mode === "renewal" ? "재계약 시작일" : "계약 시작일"}
+            label={
+              mode === "recontract"
+                ? "재계약 시작일"
+                : mode === "renewal"
+                  ? "재계약 시작일"
+                  : "계약 시작일"
+            }
             type="date"
             value={form.contractStartDate}
-            onChange={(e) =>
-              setForm({ ...form, contractStartDate: e.target.value })
-            }
+            onChange={(e) => {
+              const contractStartDate = e.target.value;
+              setForm((prev) => ({
+                ...prev,
+                contractStartDate,
+                isExtension:
+                  canEnableExtensionContractCheckbox(contractStartDate) &&
+                  (prev.isExtension ?? false),
+              }));
+            }}
           />
           <Input
             label={mode === "renewal" ? "재계약 종료일" : "계약 종료일"}
@@ -175,10 +238,10 @@ export function ContractTermsEditModal({
             <p className="w-full text-xs text-amber-400/80">
               임원 · 대표 전용 설정
             </p>
-            <Checkbox
-              label="연장 계약 (재계약 · 성과급 정책)"
-              checked={form.isExtension ?? true}
-              onChange={(v) => setForm({ ...form, isExtension: v })}
+            <ExtensionContractCheckboxField
+              contractStartDate={form.contractStartDate}
+              checked={form.isExtension ?? false}
+              onChange={(isExtension) => setForm({ ...form, isExtension })}
             />
             <Checkbox
               label="소개 프로모션 (10%)"
@@ -230,7 +293,11 @@ export function ContractTermsEditModal({
             취소
           </Button>
           <Button type="submit">
-            {mode === "renewal" ? "재계약 조건 적용" : "조건 저장"}
+            {mode === "recontract"
+              ? "재계약 적용"
+              : mode === "renewal"
+                ? "재계약 조건 적용"
+                : "조건 저장"}
           </Button>
         </div>
       </form>

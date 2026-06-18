@@ -4,13 +4,16 @@ import type { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { AuthProvider } from "@/context/AuthContext";
 import { DataProvider, useData } from "@/context/DataContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 
 /** DataProvider + AuthProvider — layout 루트에서 한 번만 마운트 */
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <DataProvider>
-      <AuthProvider>{children}</AuthProvider>
-    </DataProvider>
+    <ThemeProvider>
+      <DataProvider>
+        <AuthProvider>{children}</AuthProvider>
+      </DataProvider>
+    </ThemeProvider>
   );
 }
 
@@ -26,7 +29,7 @@ export function AppReadyGate({
 
   if (!hydrated) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+      <div className="flex min-h-screen items-center justify-center bg-[var(--background)]">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
           <p className="text-sm text-zinc-500">{message}</p>

@@ -61,7 +61,7 @@ export function BonusPolicyPanel() {
     return (
       <PolicyCard
         title="성과급 % 설정 (팀장 → 담당)"
-        subtitle={`임원 부여 한도 ${leaderLimit}% 이내에서 담당별 성과급 설정`}
+        subtitle={`임원 부여 한도 ${leaderLimit}% 이내에서 담당별 성과급 설정 · 팀장 직접 담당 고객사는 담당 분 없이 팀장 한도 전액`}
       >
         {staff.map((member) => (
           <LimitRow
@@ -87,7 +87,7 @@ function CeoPolicyPanel() {
   return (
     <PolicyCard
       title="성과급 % 한도 설정 (대표 → 임원)"
-      subtitle="임원별 성과급 상한(%) — 임원은 이 한도 내에서 팀장에게 배분"
+      subtitle="임직원별 성과금 상한(%) — 임원은 이 한도 내에서 팀장에게 배분"
     >
       {executives.map((exec) => (
         <LimitRow

@@ -219,7 +219,7 @@ export function PostLinkOpinionButton({
           </div>
 
           <p className="text-[10px] text-zinc-600">
-            등록한 의견은 플레이스 · 질의응답 목록에 원본 링크와 함께 표시됩니다.
+            등록한 의견은 고객사 Q&A 목록에 원본 링크와 함께 표시됩니다.
           </p>
         </form>
       </Modal>

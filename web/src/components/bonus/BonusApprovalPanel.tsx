@@ -10,12 +10,10 @@ import {
   enrichBonusPayment,
   filterBonusForExecutive,
   filterBonusForTeamLeader,
+  formatBonusKRW,
   getPendingBonusForRole,
 } from "@/lib/bonus-utils";
-import {
-  ClientDepositTaskLine,
-} from "@/components/finance/ClientDepositConfirmPanel";
-import { formatKRW } from "@/lib/finance";
+import { BonusPayDateLine } from "@/components/bonus/BonusPayScheduleNotice";
 import { BONUS_STAGE_LABELS } from "@/lib/types";
 
 type ApprovalRole = "team_leader" | "executive" | "ceo";
@@ -35,20 +33,20 @@ const ROLE_CONFIG: Record<
 > = {
   team_leader: {
     title: "성과급 결재 (1차 · 팀장)",
-    subtitle: "담당 신청 건 · 설정 % 기준 검토 후 임원 결재로 상신",
+    subtitle: "담당 신청 건 · 매월 15일 마감 전 임원 결재로 상신",
     nextLabel: "임원 결재",
     approve: (ctx, id, userId) => ctx.approveBonusTeamLeader(id, userId),
   },
   executive: {
     title: "성과급 결재 (2차 · 임원)",
-    subtitle: "팀장 승인 건 · 대표 부여 한도 내 총액 검토",
+    subtitle: "팀장 승인 건 · 15일 마감 전 대표 결재",
     nextLabel: "대표 결재",
     approve: (ctx, id, userId) => ctx.approveBonusExecutive(id, userId),
   },
   ceo: {
     title: "성과급 결재 (3차 · 대표)",
-    subtitle: "최종 승인 → 재무담당 지급 (하향 설정 · 상향 결재)",
-    nextLabel: "승인 · 지급 대기",
+    subtitle: "최종 승인 → 매월 15일 마감 · 25일 급여 합산 지급",
+    nextLabel: "승인 · 급여 반영 대기",
     approve: (ctx, id, userId) => ctx.approveBonusCeo(id, userId),
   },
 };
@@ -94,11 +92,12 @@ export function BonusApprovalPanel({ role }: { role: ApprovalRole }) {
                 </p>
                 <p className="mt-2 text-xs text-zinc-500">
                   재계약 {item.renewalMonthAtRequest ?? item.renewalMonthCount}월차 ·
-                  월 광고비 {formatKRW(item.monthlyFee)}
+                  월 광고비 {formatBonusKRW(item.monthlyFee)}
                 </p>
                 <div className="mt-1">
-                  <ClientDepositTaskLine
-                    contractId={item.contractId}
+                  <BonusPayDateLine
+                    clientDepositDate={item.clientDepositDate}
+                    closingDeadline={item.closingDeadline}
                     scheduledPayDate={item.scheduledPayDate}
                     paidAt={item.paidAt}
                   />
@@ -117,11 +116,11 @@ export function BonusApprovalPanel({ role }: { role: ApprovalRole }) {
                 value={item.teamLeaderBonusAmount}
               />
               <AmountCell
-                label={`임원 ${item.executivePercentApplied}%`}
+                label={`임직원 ${item.executivePercentApplied}%`}
                 value={item.executiveBonusAmount}
               />
               <AmountCell
-                label="총 지급 성과금"
+                label="총 지급 성과금(세전)"
                 value={item.totalAmount}
                 highlight
               />
@@ -183,7 +182,7 @@ function AmountCell({
           highlight ? "text-emerald-400" : "text-zinc-300"
         }`}
       >
-        {formatKRW(value)}
+        {formatBonusKRW(value)}
       </p>
     </div>
   );
@@ -209,8 +208,8 @@ export function BonusStatusSummary() {
         <Coins className="mr-1 inline h-3 w-3" />
         결재 진행 {counts.pending}건
       </Badge>
-      <Badge variant="info">지급 대기 {counts.confirmed}건</Badge>
-      <Badge variant="success">지급 완료 {counts.paid}건</Badge>
+      <Badge variant="info">급여 합산 대기 {counts.confirmed}건</Badge>
+      <Badge variant="success">급여 반영 완료 {counts.paid}건</Badge>
     </div>
   );
 }

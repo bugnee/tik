@@ -4,10 +4,78 @@ import type {
   ExpenseCategoryDefinition,
   Partner,
   PartnerCategory,
+  PartnerFilterDefinition,
+  PartnerLinkSlot,
+  PartnerStatus,
   WorkOrderCostLine,
 } from "./types";
+import { PARTNER_STATUS_LABELS } from "./types";
+import { getPartnerFilterLabel } from "./partner-filter-utils";
 
-export const PARTNER_CATEGORY_LABELS: Record<PartnerCategory, string> = {
+export { PARTNER_STATUS_LABELS };
+
+export const PARTNER_LINK_SLOT_COUNT = 3;
+
+export function normalizePartnerLinkSlots(
+  slots?: PartnerLinkSlot[],
+): PartnerLinkSlot[] {
+  return Array.from({ length: PARTNER_LINK_SLOT_COUNT }, (_, i) => {
+    const url = slots?.[i]?.url?.trim();
+    const nickname = slots?.[i]?.nickname?.trim();
+    return {
+      url: url || undefined,
+      nickname: nickname || undefined,
+    };
+  });
+}
+
+export type LegacyPartnerInput = Omit<Partner, "status" | "linkSlots"> & {
+  status?: PartnerStatus;
+  isActive?: boolean;
+  linkSlots?: PartnerLinkSlot[];
+};
+
+export function normalizePartner(raw: LegacyPartnerInput): Partner {
+  const status: PartnerStatus =
+    raw.status ?? (raw.isActive === false ? "ended" : "active");
+  const { isActive: _removed, ...rest } = raw;
+  return {
+    ...rest,
+    status,
+    registeredAt: raw.registeredAt ?? undefined,
+    bankName: raw.bankName?.trim() || undefined,
+    linkSlots: normalizePartnerLinkSlots(raw.linkSlots),
+  };
+}
+
+export function normalizePartners(partners: LegacyPartnerInput[]): Partner[] {
+  return partners.map(normalizePartner);
+}
+
+export function isPartnerExpenseSelectable(partner: Partner): boolean {
+  return partner.status === "active";
+}
+
+export function getPartnerStatusLabel(status: PartnerStatus): string {
+  return PARTNER_STATUS_LABELS[status];
+}
+
+export function getPartnerStatusBadgeVariant(
+  status: PartnerStatus,
+): "success" | "warning" | "danger" | "default" {
+  switch (status) {
+    case "active":
+      return "success";
+    case "ended":
+      return "warning";
+    case "blocked":
+      return "danger";
+    default:
+      return "default";
+  }
+}
+
+export const PARTNER_CATEGORY_LABELS: Record<string, string> = {
   press: "기자단",
   experience: "체험단",
   influencer: "인플루언서",
@@ -36,7 +104,7 @@ export function filterPartnersByCategory(
   activeOnly = true,
 ): Partner[] {
   return partners.filter((p) => {
-    if (activeOnly && !p.isActive) return false;
+    if (activeOnly && !isPartnerExpenseSelectable(p)) return false;
     if (category === "all") return true;
     return partnerHasCategory(p, category);
   });
@@ -74,7 +142,7 @@ export function filterPartnersForExpenseCategory(
   definitions?: ExpenseCategoryDefinition[],
 ): Partner[] {
   const mapped = expenseCategoryToPartnerCategory(category, definitions);
-  if (!mapped) return partners.filter((p) => p.isActive);
+  if (!mapped) return partners.filter(isPartnerExpenseSelectable);
   return filterPartnersByCategory(partners, mapped);
 }
 
@@ -86,8 +154,17 @@ export function getPartnerName(
   return partners.find((p) => p.id === partnerId)?.companyName ?? "-";
 }
 
-export function formatPartnerCategories(categories: PartnerCategory[]): string {
-  return categories.map((c) => PARTNER_CATEGORY_LABELS[c]).join(" · ");
+export function formatPartnerCategories(
+  categories: PartnerCategory[],
+  filters?: PartnerFilterDefinition[],
+): string {
+  return categories
+    .map((c) =>
+      filters?.length
+        ? getPartnerFilterLabel(filters, c)
+        : (PARTNER_CATEGORY_LABELS[c] ?? c),
+    )
+    .join(" · ");
 }
 
 export function executionTypeToPartnerCategory(
@@ -118,10 +195,13 @@ export function isReferralPartnerUser(
 export function formatPartnerSelectLabel(
   partner: Partner,
   forCategory?: PartnerCategory,
+  filters?: PartnerFilterDefinition[],
 ): string {
   const categoryLabel = forCategory
-    ? PARTNER_CATEGORY_LABELS[forCategory]
-    : formatPartnerCategories(partner.categories);
+    ? filters?.length
+      ? getPartnerFilterLabel(filters, forCategory)
+      : (PARTNER_CATEGORY_LABELS[forCategory] ?? forCategory)
+    : formatPartnerCategories(partner.categories, filters);
   const priceHint =
     partner.unitPrice && partner.unitPrice > 0
       ? ` · ${partner.unitPrice.toLocaleString()}원`

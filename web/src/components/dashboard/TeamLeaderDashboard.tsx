@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -12,7 +12,6 @@ import {
   YAxis,
 } from "recharts";
 import {
-  Award,
   Building2,
   Check,
   ChevronRight,
@@ -28,11 +27,14 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { StatCard } from "@/components/ui/StatCard";
 import { DashboardHeader } from "@/components/dashboard/StaffDashboard";
+import { DashboardBonusSection } from "@/components/dashboard/DashboardBonusSection";
 import { BonusApprovalPanel } from "@/components/bonus/BonusApprovalPanel";
 import { BonusPolicyPanel } from "@/components/bonus/BonusPolicyPanel";
 import { StaffBonusRequestPanel } from "@/components/bonus/StaffBonusRequestPanel";
 import { BonusPayScheduleNotice } from "@/components/bonus/BonusPayScheduleNotice";
 import { PlaceQaDashboardPanel } from "@/components/place-qa/PlaceQaDashboardPanel";
+import { ContractBriefListModal } from "@/components/contracts/ContractBriefListModal";
+import { TeamMemberListModal } from "@/components/dashboard/TeamMemberListModal";
 import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
 import {
@@ -41,6 +43,7 @@ import {
   isBonusEligible,
 } from "@/lib/bonus-utils";
 import { filterLeaderWorkContracts } from "@/lib/contract-access-utils";
+import { formatBonusKRW } from "@/lib/bonus-utils";
 import { formatKRW, formatPercent } from "@/lib/finance";
 import {
   filterContractsByRole,
@@ -55,9 +58,20 @@ import {
   getContractTargetChannels,
 } from "@/lib/task-channel-utils";
 
+type TeamLeaderListModal =
+  | "members"
+  | "teamContracts"
+  | "teamCompletion"
+  | "extension"
+  | "myWork"
+  | "myCompletion"
+  | "myBonus"
+  | null;
+
 export function TeamLeaderDashboard() {
   const data = useData();
   const { currentUser } = useRole();
+  const [listModal, setListModal] = useState<TeamLeaderListModal>(null);
   const {
     extensionApprovals,
     approveExtension,
@@ -98,6 +112,26 @@ export function TeamLeaderDashboard() {
   );
   const extensionRate = getExtensionRate(teamContracts);
   const teamMembers = getTeamMemberStats(data, teamId);
+  const teamAvgCompletion =
+    teamMembers.length > 0
+      ? teamMembers.reduce((s, m) => s + m.completionRate, 0) /
+        teamMembers.length
+      : 0;
+  const extensionContracts = useMemo(
+    () => teamContracts.filter((c) => c.isExtension),
+    [teamContracts],
+  );
+  const myBonusContracts = useMemo(
+    () => myWorkContracts.filter((c) => isBonusEligible(c)),
+    [myWorkContracts],
+  );
+  const teamContractsByCompletion = useMemo(
+    () =>
+      [...teamContracts].sort(
+        (a, b) => getCompletionRate(data, b) - getCompletionRate(data, a),
+      ),
+    [teamContracts, data],
+  );
 
   const pending = extensionApprovals.filter((a) => a.status === "pending");
 
@@ -115,32 +149,23 @@ export function TeamLeaderDashboard() {
 
       {myWorkContracts.length > 0 && (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <StatCard
               label="내 담당 업체"
               value={`${myWorkContracts.length}개`}
               subValue="팀장 직접 담당 · 담당 실무 비공개"
               icon={Building2}
               accent="cyan"
+              onValueClick={() => setListModal("myWork")}
             />
             <StatCard
               label="내 담당 달성률"
               value={`${myAvgCompletion.toFixed(1)}%`}
               icon={Target}
               accent="emerald"
-            />
-            <StatCard
-              label="내 연장 성과급"
-              value={formatKRW(myBonusTotal)}
-              subValue={`한도 ${leaderLimit}% 전액`}
-              icon={Award}
-              accent="amber"
+              onValueClick={() => setListModal("myCompletion")}
             />
           </div>
-
-          <BonusPayScheduleNotice />
-
-          <StaffBonusRequestPanel mode="team_leader" />
 
           <Card glow>
             <CardHeader
@@ -199,25 +224,21 @@ export function TeamLeaderDashboard() {
           value={`${teamMembers.length}명`}
           icon={Users}
           accent="cyan"
+          onValueClick={() => setListModal("members")}
         />
         <StatCard
           label="팀 담당 업체"
           value={`${teamContracts.length}개`}
           icon={RefreshCw}
           accent="cyan"
+          onValueClick={() => setListModal("teamContracts")}
         />
         <StatCard
           label="팀 평균 달성률"
-          value={
-            teamMembers.length > 0
-              ? formatPercent(
-                  teamMembers.reduce((s, m) => s + m.completionRate, 0) /
-                    teamMembers.length,
-                )
-              : "0%"
-          }
+          value={formatPercent(teamAvgCompletion)}
           icon={Percent}
           accent="emerald"
+          onValueClick={() => setListModal("teamCompletion")}
         />
         <StatCard
           label="연장 전환율"
@@ -225,10 +246,69 @@ export function TeamLeaderDashboard() {
           subValue="팀 전체 기준"
           icon={RefreshCw}
           accent="amber"
+          onValueClick={() => setListModal("extension")}
         />
       </div>
 
-      <PlaceQaDashboardPanel title="팀 · 플레이스 문의 현황" />
+      <TeamMemberListModal
+        open={listModal === "members"}
+        onClose={() => setListModal(null)}
+        title={`팀원 (${teamMembers.length}명)`}
+        description="개인별 담당 업체 · 달성률 · 연장 전환율"
+        members={teamMembers}
+      />
+      <ContractBriefListModal
+        open={listModal === "teamContracts"}
+        onClose={() => setListModal(null)}
+        title={`팀 담당 업체 (${teamContracts.length}개)`}
+        description="팀 전체 활성·종료 계약"
+        contracts={teamContracts}
+        data={data}
+      />
+      <ContractBriefListModal
+        open={listModal === "teamCompletion"}
+        onClose={() => setListModal(null)}
+        title={`팀 담당 업체 · 달성률 (${teamContracts.length}개)`}
+        description={`팀 평균 달성률 ${formatPercent(teamAvgCompletion)} · 달성률 높은 순`}
+        contracts={teamContractsByCompletion}
+        data={data}
+      />
+      <ContractBriefListModal
+        open={listModal === "extension"}
+        onClose={() => setListModal(null)}
+        title={`연장 계약 (${extensionContracts.length}/${teamContracts.length})`}
+        description={`팀 연장 전환율 ${formatPercent(extensionRate)}`}
+        contracts={extensionContracts}
+        data={data}
+      />
+      <ContractBriefListModal
+        open={listModal === "myWork"}
+        onClose={() => setListModal(null)}
+        title={`내 담당 업체 (${myWorkContracts.length}개)`}
+        description="팀장 직접 담당 · 담당 실무 비공개"
+        contracts={myWorkContracts}
+        data={data}
+      />
+      <ContractBriefListModal
+        open={listModal === "myCompletion"}
+        onClose={() => setListModal(null)}
+        title={`내 담당 업체 · 달성률 (${myWorkContracts.length}개)`}
+        description={`평균 달성률 ${myAvgCompletion.toFixed(1)}%`}
+        contracts={[...myWorkContracts].sort(
+          (a, b) => getCompletionRate(data, b) - getCompletionRate(data, a),
+        )}
+        data={data}
+      />
+      <ContractBriefListModal
+        open={listModal === "myBonus"}
+        onClose={() => setListModal(null)}
+        title={`연장 성과급(세전) 대상 (${myBonusContracts.length}개)`}
+        description={`예상 합계 ${formatBonusKRW(myBonusTotal)} · 한도 ${leaderLimit}% · 15일 마감 · 25일 급여 합산`}
+        contracts={myBonusContracts}
+        data={data}
+      />
+
+      <PlaceQaDashboardPanel title="팀 · 고객사 Q&A" />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card glow>
@@ -324,9 +404,6 @@ export function TeamLeaderDashboard() {
         </Card>
       </div>
 
-      <BonusPolicyPanel />
-      <BonusApprovalPanel role="team_leader" />
-
       <Card>
         <CardHeader title="팀원 상세" subtitle="개인별 연장 전환율" />
         <div className="overflow-x-auto">
@@ -367,6 +444,38 @@ export function TeamLeaderDashboard() {
           </table>
         </div>
       </Card>
+
+      <DashboardBonusSection
+        hint={
+          myBonusContracts.length > 0 ? (
+            <span className="text-xs text-[var(--muted)]">
+              대상 {myBonusContracts.length}건
+            </span>
+          ) : undefined
+        }
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--card-muted)] px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-[var(--foreground)]">
+              내 연장 성과급(세전) 예상
+            </p>
+            <p className="text-xs text-[var(--muted)]">
+              한도 {leaderLimit}% · 대상 {myBonusContracts.length}건
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setListModal("myBonus")}
+            className="text-lg font-bold text-emerald-600 dark:text-emerald-400"
+          >
+            {formatBonusKRW(myBonusTotal)}
+          </button>
+        </div>
+        <BonusPayScheduleNotice />
+        <StaffBonusRequestPanel mode="team_leader" />
+        <BonusPolicyPanel />
+        <BonusApprovalPanel role="team_leader" />
+      </DashboardBonusSection>
     </div>
   );
 }

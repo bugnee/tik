@@ -29,12 +29,12 @@ const ROLES: {
   {
     value: "ceo",
     icon: Crown,
-    description: "전사 43개 업체 · 조직도 드릴다운",
+    description: "전사 업체 · 조직도 드릴다운",
   },
   {
     value: "finance_manager",
     icon: Wallet,
-    description: "원가·성과급 자금 운영 · 지급 처리",
+    description: "원가·성과급(세전) 자금 운영 · 15일 마감 · 25일 급여 합산",
   },
   {
     value: "partner",

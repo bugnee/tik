@@ -62,21 +62,21 @@ export function Modal({
       <div className="flex min-h-full items-end justify-center p-0 sm:items-center sm:p-6">
         <div
           className={cn(
-            "relative flex w-full max-h-[100dvh] flex-col rounded-none border-zinc-700/80 bg-zinc-900 shadow-2xl sm:max-h-[min(90vh,calc(100dvh-2rem))] sm:rounded-2xl sm:border",
+            "relative flex w-full max-h-[100dvh] flex-col rounded-none border-[var(--border)] bg-[var(--card)] shadow-2xl sm:max-h-[min(90vh,calc(100dvh-2rem))] sm:rounded-2xl sm:border",
             sizes[size],
           )}
         >
-          <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-4 py-3 sm:px-5 sm:py-4">
+          <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-3 sm:px-5 sm:py-4">
             <h2
               id="modal-title"
-              className="text-base font-semibold text-zinc-100"
+              className="text-base font-semibold text-[var(--foreground)]"
             >
               {title}
             </h2>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+              className="rounded-lg p-1.5 text-[var(--muted)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
             >
               <X className="h-4 w-4" />
             </button>

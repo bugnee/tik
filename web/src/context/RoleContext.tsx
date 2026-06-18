@@ -21,7 +21,10 @@ import { useAuth } from "@/context/AuthContext";
 import { useData } from "@/context/DataContext";
 
 import { DEMO_USER_BY_ROLE } from "@/lib/seed-data";
-
+import {
+  canSubmitWorkEvaluation,
+  canViewWorkEvaluations as roleCanViewWorkEvaluations,
+} from "@/lib/work-evaluation-utils";
 import type { User, UserRole } from "@/lib/types";
 
 
@@ -45,6 +48,10 @@ interface RoleContextValue {
   canManageFinanceOps: boolean;
 
   canManagePartners: boolean;
+
+  canEvaluateWork: boolean;
+
+  canViewWorkEvaluations: boolean;
 
 }
 
@@ -130,6 +137,10 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
     activeRole === "finance_manager";
 
+  const canEvaluateWork = canSubmitWorkEvaluation(activeRole);
+
+  const canViewWorkEvaluations = roleCanViewWorkEvaluations(activeRole);
+
 
 
   return (
@@ -155,6 +166,10 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         canManageFinanceOps,
 
         canManagePartners,
+
+        canEvaluateWork,
+
+        canViewWorkEvaluations,
 
       }}
 

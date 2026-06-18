@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
-  Award,
   Building2,
   CheckCircle2,
   ChevronRight,
@@ -18,10 +17,16 @@ import { StatCard } from "@/components/ui/StatCard";
 import { StaffBonusRequestPanel } from "@/components/bonus/StaffBonusRequestPanel";
 import { BonusPayScheduleNotice } from "@/components/bonus/BonusPayScheduleNotice";
 import { ContractBriefListModal } from "@/components/contracts/ContractBriefListModal";
+import { DashboardBonusSection } from "@/components/dashboard/DashboardBonusSection";
 import { PlaceQaDashboardPanel } from "@/components/place-qa/PlaceQaDashboardPanel";
 import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
-import { calcBonusAmounts, calcScheduledPayDate, isBonusEligible } from "@/lib/bonus-utils";
+import {
+  calcBonusAmounts,
+  calcScheduledPayDate,
+  formatBonusKRW,
+  isBonusEligible,
+} from "@/lib/bonus-utils";
 import { formatKRW } from "@/lib/finance";
 import {
   filterContractsByRole,
@@ -87,19 +92,12 @@ export function StaffDashboard() {
         <StatCard
           label="연장 계약"
           value={`${extensionCount}건`}
-          subValue={`재계약 4월차+ · ${staffPct}% 적용`}
+          subValue="재계약(연장) 전환 고객사"
           icon={TrendingUp}
           accent="amber"
           onValueClick={
             extensionCount > 0 ? () => setExtensionModalOpen(true) : undefined
           }
-        />
-        <StatCard
-          label="연장 성과급 누적"
-          value={formatKRW(bonus)}
-          subValue={`월 광고비 × ${staffPct}% 합산`}
-          icon={Award}
-          accent="emerald"
         />
       </div>
 
@@ -107,71 +105,77 @@ export function StaffDashboard() {
         open={extensionModalOpen}
         onClose={() => setExtensionModalOpen(false)}
         title={`연장 계약 고객사 (${extensionCount}곳)`}
-        description="본인 담당 · 재계약 · 성과급 정책 적용"
+        description="본인 담당 · 재계약 고객사"
         contracts={extensionContracts}
         data={data}
       />
 
-      <BonusPayScheduleNotice />
-
-      <StaffBonusRequestPanel />
-
       <PlaceQaDashboardPanel />
 
-      <div className="grid gap-6 lg:grid-cols-5">
-        <Card className="lg:col-span-3" glow>
-          <CardHeader
-            title="업무 달성률"
-            subtitle="업체를 클릭하면 계약·진행·원가를 입력할 수 있습니다"
-          />
-          <div className="space-y-3">
-            {contracts.map((c) => {
-              const rate = getCompletionRate(data, c);
-              const summaryChannels = targetChannels.filter(
-                (channel) => channel.contractDoneField,
-              );
-              return (
-                <Link
-                  key={c.id}
-                  href={`/contracts/${c.id}`}
-                  className="group block rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-4 transition-all hover:border-emerald-500/40 hover:bg-emerald-500/5"
-                >
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-zinc-200 group-hover:text-emerald-300">
-                        {c.clientName}
-                      </span>
-                      {c.isExtension && (
-                        <Badge variant="success">연장</Badge>
-                      )}
-                      {c.hasReferralPromo && (
-                        <Badge variant="info">소개 10%</Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm text-zinc-400">
-                        {formatKRW(c.monthlyFee)}/월
-                      </span>
-                      <ChevronRight className="h-4 w-4 text-zinc-600 transition-transform group-hover:translate-x-0.5 group-hover:text-emerald-400" />
-                    </div>
+      <Card glow>
+        <CardHeader
+          title="업무 달성률"
+          subtitle="업체를 클릭하면 계약·진행·원가를 입력할 수 있습니다"
+        />
+        <div className="space-y-3">
+          {contracts.map((c) => {
+            const rate = getCompletionRate(data, c);
+            const summaryChannels = targetChannels.filter(
+              (channel) => channel.contractDoneField,
+            );
+            return (
+              <Link
+                key={c.id}
+                href={`/contracts/${c.id}`}
+                className="group block rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-4 transition-all hover:border-emerald-500/40 hover:bg-emerald-500/5"
+              >
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-zinc-200 group-hover:text-emerald-300">
+                      {c.clientName}
+                    </span>
+                    {c.isExtension && (
+                      <Badge variant="success">연장</Badge>
+                    )}
+                    {c.hasReferralPromo && (
+                      <Badge variant="info">소개 10%</Badge>
+                    )}
                   </div>
-                  <ProgressBar value={rate} label="종합 달성률" color="emerald" />
-                  <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-zinc-500">
-                    {summaryChannels.map((channel) => (
-                      <span key={channel.id}>
-                        {channel.label} {formatContractTargetSummary(c, channel)}
-                      </span>
-                    ))}
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm text-zinc-400">
+                      {formatKRW(c.monthlyFee)}/월
+                    </span>
+                    <ChevronRight className="h-4 w-4 text-zinc-600 transition-transform group-hover:translate-x-0.5 group-hover:text-emerald-400" />
                   </div>
-                </Link>
-              );
-            })}
-          </div>
-        </Card>
+                </div>
+                <ProgressBar value={rate} label="종합 달성률" color="emerald" />
+                <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-zinc-500">
+                  {summaryChannels.map((channel) => (
+                    <span key={channel.id}>
+                      {channel.label} {formatContractTargetSummary(c, channel)}
+                    </span>
+                  ))}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </Card>
 
-        <Card className="lg:col-span-2">
+      <DashboardBonusSection
+        hint={
+          eligibleExtensions.length > 0 ? (
+            <span className="text-xs text-[var(--muted)]">
+              지급 대상 {eligibleExtensions.length}건
+            </span>
+          ) : undefined
+        }
+      >
+        <BonusPayScheduleNotice />
+        <StaffBonusRequestPanel />
+        <Card>
           <CardHeader
-            title={`연장 성과급 (${staffPct}%)`}
+            title={`연장 성과급(세전) (${staffPct}%)`}
             subtitle="재계약 4월차+ · 지급 신청 가능"
           />
           <div className="space-y-3">
@@ -199,7 +203,7 @@ export function StaffDashboard() {
                     )}
                   </div>
                   <p className="font-mono text-sm font-semibold text-emerald-400">
-                    +{formatKRW(amounts.staffBonusAmount)}
+                    +{formatBonusKRW(amounts.staffBonusAmount)}
                   </p>
                 </div>
               );
@@ -213,11 +217,11 @@ export function StaffDashboard() {
           <div className="mt-4 flex items-center justify-between border-t border-zinc-800 pt-4">
             <span className="text-sm text-zinc-400">누적 합계</span>
             <span className="text-lg font-bold text-emerald-400">
-              {formatKRW(bonus)}
+              {formatBonusKRW(bonus)}
             </span>
           </div>
         </Card>
-      </div>
+      </DashboardBonusSection>
     </div>
   );
 }

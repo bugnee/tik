@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { DashboardHeader } from "@/components/dashboard/StaffDashboard";
+import { DashboardBonusSection } from "@/components/dashboard/DashboardBonusSection";
 import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
 import { BonusPayScheduleNotice } from "@/components/bonus/BonusPayScheduleNotice";
@@ -23,6 +24,7 @@ import {
 } from "@/components/finance/ClientDepositConfirmPanel";
 import {
   enrichBonusPayment,
+  formatBonusKRW,
   getPendingBonusForRole,
 } from "@/lib/bonus-utils";
 import { formatKRW } from "@/lib/finance";
@@ -82,11 +84,11 @@ export function FinanceManagerDashboard({ embedded }: { embedded?: boolean } = {
       {!embedded && (
         <DashboardHeader
           title="재무담당 대시보드"
-          description="원가·성과급 자금 운영 · 대표 승인 완료 건 지급 처리"
+          description="원가·성과급(세전) 자금 운영 · 15일 마감 · 25일 급여 합산"
         />
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
           label="월 운영 예산"
           value={formatKRW(fundBudget.monthlyBudget)}
@@ -101,13 +103,6 @@ export function FinanceManagerDashboard({ embedded }: { embedded?: boolean } = {
           accent="amber"
         />
         <StatCard
-          label="성과급 배정 잔액"
-          value={formatKRW(fundBudget.bonusAllocated)}
-          subValue={`지급 대기 ${formatKRW(bonusPendingTotal)}`}
-          icon={Banknote}
-          accent="cyan"
-        />
-        <StatCard
           label="운영 여유 자금"
           value={formatKRW(fundBudget.operatingReserve)}
           subValue={`배정률 ${fundBudget.monthlyBudget > 0 ? Math.round((usedBudget / fundBudget.monthlyBudget) * 100) : 0}%`}
@@ -119,9 +114,8 @@ export function FinanceManagerDashboard({ embedded }: { embedded?: boolean } = {
       <FundAllocationCard
         fundBudget={fundBudget}
         onUpdate={updateFundBudget}
+        hideBonus
       />
-
-      <ClientDepositConfirmPanel />
 
       <ExpensePayoutQueue
         expenses={enrichedExpenses}
@@ -134,17 +128,45 @@ export function FinanceManagerDashboard({ embedded }: { embedded?: boolean } = {
         }
       />
 
-      <BonusPayScheduleNotice />
+      <DashboardBonusSection
+        hint={
+          pendingBonuses.length > 0 ? (
+            <span className="text-xs text-[var(--muted)]">
+              지급 대기 {pendingBonuses.length}건
+            </span>
+          ) : undefined
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <StatCard
+            label="성과급 배정 잔액"
+            value={formatKRW(fundBudget.bonusAllocated)}
+            subValue={`급여 합산 대기 ${formatBonusKRW(bonusPendingTotal)}`}
+            icon={Banknote}
+            accent="cyan"
+          />
+        </div>
 
-      <BonusPayoutQueue
-        bonuses={pendingBonuses}
-        onPay={(id) => {
-          const ok = payBonus(id, currentUser.id);
-          if (!ok) {
-            alert("지급 예정일이 도래하지 않았거나 처리할 수 없습니다.");
-          }
-        }}
-      />
+        <FundAllocationCard
+          fundBudget={fundBudget}
+          onUpdate={updateFundBudget}
+          bonusOnly
+        />
+
+        <ClientDepositConfirmPanel />
+
+        <BonusPayScheduleNotice />
+
+        <BonusPayoutQueue
+          bonuses={pendingBonuses}
+          onPay={(id) => {
+            const ok = payBonus(id, currentUser.id);
+            if (!ok) {
+              alert("급여 합산 지급일이 도래하지 않았거나 처리할 수 없습니다.");
+            }
+          }}
+        />
+      </DashboardBonusSection>
     </div>
   );
 }
@@ -152,6 +174,8 @@ export function FinanceManagerDashboard({ embedded }: { embedded?: boolean } = {
 function FundAllocationCard({
   fundBudget,
   onUpdate,
+  hideBonus,
+  bonusOnly,
 }: {
   fundBudget: {
     monthlyBudget: number;
@@ -160,24 +184,20 @@ function FundAllocationCard({
     operatingReserve: number;
   };
   onUpdate: (input: Partial<typeof fundBudget>) => void;
+  hideBonus?: boolean;
+  bonusOnly?: boolean;
 }) {
   const total =
     fundBudget.expenseAllocated +
     fundBudget.bonusAllocated +
     fundBudget.operatingReserve;
 
-  return (
-    <Card>
-      <CardHeader
-        title="자금 배분 현황"
-        subtitle="월 예산 대비 원가·성과급·여유자금"
-      />
-      <div className="space-y-3">
-        <FundBar
-          label="원가 배정"
-          amount={fundBudget.expenseAllocated}
-          total={fundBudget.monthlyBudget}
-          color="bg-amber-500"
+  if (bonusOnly) {
+    return (
+      <Card>
+        <CardHeader
+          title="성과급 자금 배분"
+          subtitle="월 예산 중 성과급 배정 · 여유자금 이동"
         />
         <FundBar
           label="성과급 배정"
@@ -185,12 +205,73 @@ function FundAllocationCard({
           total={fundBudget.monthlyBudget}
           color="bg-cyan-500"
         />
-        <FundBar
-          label="운영 여유"
-          amount={fundBudget.operatingReserve}
-          total={fundBudget.monthlyBudget}
-          color="bg-emerald-500"
-        />
+        <div className="mt-3">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              onUpdate({
+                bonusAllocated: fundBudget.bonusAllocated + 2_000_000,
+                operatingReserve: fundBudget.operatingReserve - 2_000_000,
+              })
+            }
+          >
+            성과급 +200만 이동
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title="자금 배분 현황"
+        subtitle={
+          hideBonus
+            ? "월 예산 대비 원가·여유자금"
+            : "월 예산 대비 원가·성과급·여유자금"
+        }
+      />
+      <div className="space-y-3">
+        {!hideBonus && (
+          <>
+            <FundBar
+              label="원가 배정"
+              amount={fundBudget.expenseAllocated}
+              total={fundBudget.monthlyBudget}
+              color="bg-amber-500"
+            />
+            <FundBar
+              label="성과급 배정"
+              amount={fundBudget.bonusAllocated}
+              total={fundBudget.monthlyBudget}
+              color="bg-cyan-500"
+            />
+            <FundBar
+              label="운영 여유"
+              amount={fundBudget.operatingReserve}
+              total={fundBudget.monthlyBudget}
+              color="bg-emerald-500"
+            />
+          </>
+        )}
+        {hideBonus && (
+          <>
+            <FundBar
+              label="원가 배정"
+              amount={fundBudget.expenseAllocated}
+              total={fundBudget.monthlyBudget}
+              color="bg-amber-500"
+            />
+            <FundBar
+              label="운영 여유"
+              amount={fundBudget.operatingReserve}
+              total={fundBudget.monthlyBudget}
+              color="bg-emerald-500"
+            />
+          </>
+        )}
       </div>
       <div className="mt-4 flex items-center justify-between border-t border-zinc-800 pt-4 text-sm">
         <span className="text-zinc-500">합계 검증</span>
@@ -217,18 +298,20 @@ function FundAllocationCard({
         >
           원가 +500만 이동
         </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() =>
-            onUpdate({
-              bonusAllocated: fundBudget.bonusAllocated + 2_000_000,
-              operatingReserve: fundBudget.operatingReserve - 2_000_000,
-            })
-          }
-        >
-          성과급 +200만 이동
-        </Button>
+        {!hideBonus && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              onUpdate({
+                bonusAllocated: fundBudget.bonusAllocated + 2_000_000,
+                operatingReserve: fundBudget.operatingReserve - 2_000_000,
+              })
+            }
+          >
+            성과급 +200만 이동
+          </Button>
+        )}
       </div>
     </Card>
   );
@@ -405,14 +488,14 @@ function BonusPayoutQueue({
   return (
     <Card glow={bonuses.length > 0}>
       <CardHeader
-        title="성과급 지급 큐"
-        subtitle="대표 승인 완료 · 업체 입금 + 60일 경과 후 지급 가능"
+        title="성과급(세전) 지급 큐"
+        subtitle="대표 승인 완료 · 매월 15일 마감 · 25일 급여 합산 지급"
         action={
           bonuses.length > 0 ? (
             <Badge variant={dueCount > 0 ? "success" : "warning"}>
               {dueCount > 0
-                ? `${dueCount}건 지급 가능`
-                : `${bonuses.length}건 예정일 대기`}
+                ? `${dueCount}건 급여 반영 가능`
+                : `${bonuses.length}건 급여 합산 대기`}
             </Badge>
           ) : undefined
         }
@@ -431,22 +514,24 @@ function BonusPayoutQueue({
               <ClientDepositTaskLine
                 contractId={item.contractId}
                 scheduledPayDate={item.scheduledPayDate}
+                closingDeadline={item.closingDeadline}
                 paidAt={item.paidAt}
               />
               <p className="mt-1 text-xs text-zinc-600">
-                담당 {item.staffPercentApplied}% {formatKRW(item.staffBonusAmount)}{" "}
-                · 팀장 {item.teamLeaderPercentApplied}%{" "}
-                {formatKRW(item.teamLeaderBonusAmount)} · 임원{" "}
+                담당 {item.staffPercentApplied}%{" "}
+                {formatBonusKRW(item.staffBonusAmount)} · 팀장{" "}
+                {item.teamLeaderPercentApplied}%{" "}
+                {formatBonusKRW(item.teamLeaderBonusAmount)} · 임직원{" "}
                 {item.executivePercentApplied}%{" "}
-                {formatKRW(item.executiveBonusAmount)}
+                {formatBonusKRW(item.executiveBonusAmount)}
               </p>
               <p className="mt-1 text-xs text-cyan-400/80">{item.payStatusMessage}</p>
             </div>
             <div className="flex items-center gap-3">
               <div className="text-right">
-                <p className="text-[10px] text-zinc-500">총 지급 성과금</p>
+                <p className="text-[10px] text-zinc-500">총 지급 성과금(세전)</p>
                 <p className="font-mono text-lg font-bold text-emerald-400">
-                  {formatKRW(item.totalAmount)}
+                  {formatBonusKRW(item.totalAmount)}
                 </p>
                 <Badge
                   variant={item.isPayDue ? "success" : "warning"}
@@ -454,7 +539,7 @@ function BonusPayoutQueue({
                 >
                   {item.isPayDue
                     ? BONUS_STAGE_LABELS[item.stage]
-                    : `예정 ${item.scheduledPayDate}`}
+                    : `급여 ${item.scheduledPayDate} 대기`}
                 </Badge>
               </div>
               <Button
@@ -463,14 +548,14 @@ function BonusPayoutQueue({
                 onClick={() => onPay(item.id)}
               >
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                {item.isPayDue ? "지급 완료" : "예정일 대기"}
+                {item.isPayDue ? "급여 반영 완료" : "급여일 대기"}
               </Button>
             </div>
           </div>
         ))}
         {bonuses.length === 0 && (
           <p className="py-10 text-center text-sm text-zinc-500">
-            대표 승인 완료 후 지급 대기 중인 성과급이 없습니다
+            대표 승인 완료 후 급여 합산 대기 중인 성과급(세전)이 없습니다
           </p>
         )}
       </div>

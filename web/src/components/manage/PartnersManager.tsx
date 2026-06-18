@@ -1,10 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   BookOpen,
   Camera,
-  Handshake,
   Megaphone,
   Pencil,
   Plus,
@@ -26,33 +26,49 @@ import {
   Th,
   Tr,
 } from "@/components/ui/DataTable";
-import { Checkbox, Input, Textarea } from "@/components/ui/FormFields";
+import { Input, Select, Textarea } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
+import { PartnerFilterBadge } from "@/components/ui/PartnerFilterBadge";
 import { StatCard } from "@/components/ui/StatCard";
 import { cn } from "@/lib/cn";
 import { formatKRW } from "@/lib/finance";
 import {
   filterPartnersByCategory,
   formatPartnerCategories,
+  getPartnerStatusBadgeVariant,
+  getPartnerStatusLabel,
+  isPartnerExpenseSelectable,
+  normalizePartnerLinkSlots,
   PARTNER_CATEGORIES,
-  PARTNER_CATEGORY_LABELS,
 } from "@/lib/partner-utils";
-import type { Partner, PartnerCategory, PartnerInput } from "@/lib/types";
+import {
+  getActivePartnerFilters,
+  getPartnerFilterAccent,
+  getPartnerFilterBadgeClassName,
+} from "@/lib/partner-filter-utils";
+import { getTaskChannelProgressBarColor } from "@/lib/task-channel-utils";
+import { contractAssigneeUsers, getUserName } from "@/lib/selectors";
+import type { Partner, PartnerCategory, PartnerInput, PartnerStatus } from "@/lib/types";
 
-type TabKey = PartnerCategory | "all";
+type TabKey =
+  | "all"
+  | "press"
+  | "experience"
+  | "influencer"
+  | "blog"
+  | "referral";
 
 const TAB_CONFIG: {
   key: TabKey;
   label: string;
   icon: typeof Megaphone;
-  accent: "amber" | "rose" | "cyan" | "emerald";
 }[] = [
-  { key: "all", label: "전체", icon: Users2, accent: "emerald" },
-  { key: "press", label: "기자단", icon: Megaphone, accent: "amber" },
-  { key: "experience", label: "체험단", icon: Camera, accent: "rose" },
-  { key: "influencer", label: "인플루언서", icon: Users2, accent: "cyan" },
-  { key: "blog", label: "블로그", icon: BookOpen, accent: "emerald" },
-  { key: "referral", label: "리셀러", icon: UserPlus, accent: "rose" },
+  { key: "all", label: "전체", icon: Users2 },
+  { key: "press", label: "기자단", icon: Megaphone },
+  { key: "experience", label: "체험단", icon: Camera },
+  { key: "influencer", label: "인플루언서", icon: Users2 },
+  { key: "blog", label: "블로그", icon: BookOpen },
+  { key: "referral", label: "리셀러", icon: UserPlus },
 ];
 
 const emptyForm = (category: PartnerCategory = "press"): PartnerInput => ({
@@ -61,16 +77,36 @@ const emptyForm = (category: PartnerCategory = "press"): PartnerInput => ({
   contactName: "",
   phone: "",
   email: "",
+  bankName: "",
   bankAccount: "",
   accountHolder: "",
+  linkSlots: normalizePartnerLinkSlots(),
   unitPrice: undefined,
+  internalManagerUserId: undefined,
   memo: "",
-  isActive: true,
+  status: "active",
 });
 
 export function PartnersManager() {
   const data = useData();
-  const { partners, expenses, addPartner, updatePartner, deletePartner } = data;
+  const { partners, expenses, users, partnerFilterDefinitions, taskChannels, addPartner, updatePartner, deletePartner } = data;
+
+  const internalManagers = useMemo(
+    () => contractAssigneeUsers({ ...data, users }),
+    [data, users],
+  );
+
+  const activePartnerFilters = useMemo(
+    () => getActivePartnerFilters(partnerFilterDefinitions),
+    [partnerFilterDefinitions],
+  );
+
+  function tabStatAccent(key: TabKey): "emerald" | "cyan" | "amber" | "rose" {
+    if (key === "all") return "emerald";
+    return getTaskChannelProgressBarColor(
+      getPartnerFilterAccent(partnerFilterDefinitions, key, taskChannels),
+    );
+  }
   const { canManagePartners } = useRole();
 
   const [tab, setTab] = useState<TabKey>("all");
@@ -81,7 +117,7 @@ export function PartnersManager() {
   const [form, setForm] = useState<PartnerInput>(emptyForm());
 
   const counts = useMemo(() => {
-    const active = partners.filter((p) => p.isActive);
+    const active = partners.filter(isPartnerExpenseSelectable);
     return {
       all: active.length,
       press: filterPartnersByCategory(active, "press").length,
@@ -99,18 +135,33 @@ export function PartnersManager() {
       tab,
       !showInactive,
     ).filter((p) => {
-      if (!showInactive && !p.isActive) return false;
-      if (showInactive && !p.isActive && tab !== "all" && !p.categories.includes(tab as PartnerCategory)) {
+      if (!showInactive && !isPartnerExpenseSelectable(p)) return false;
+      if (
+        showInactive &&
+        p.status !== "active" &&
+        tab !== "all" &&
+        !p.categories.includes(tab as PartnerCategory)
+      ) {
         return false;
       }
       return (
         p.companyName.toLowerCase().includes(q) ||
         (p.contactName?.toLowerCase().includes(q) ?? false) ||
+        (p.memo?.toLowerCase().includes(q) ?? false) ||
+        (p.internalManagerUserId
+          ? getUserName(data, p.internalManagerUserId).toLowerCase().includes(q)
+          : false) ||
         (p.accountHolder?.toLowerCase().includes(q) ?? false) ||
-        p.bankAccount.includes(q)
+        (p.bankName?.toLowerCase().includes(q) ?? false) ||
+        p.bankAccount.includes(q) ||
+        p.linkSlots.some(
+          (slot) =>
+            slot.url?.toLowerCase().includes(q) ||
+            slot.nickname?.toLowerCase().includes(q),
+        )
       );
     });
-  }, [partners, tab, search, showInactive]);
+  }, [partners, tab, search, showInactive, data]);
 
   function openCreate() {
     const defaultCat = tab === "all" ? "press" : tab;
@@ -121,7 +172,10 @@ export function PartnersManager() {
 
   function openEdit(partner: Partner) {
     setEditing(partner);
-    setForm({ ...partner });
+    setForm({
+      ...partner,
+      linkSlots: normalizePartnerLinkSlots(partner.linkSlots),
+    });
     setModalOpen(true);
   }
 
@@ -139,10 +193,15 @@ export function PartnersManager() {
     ev.preventDefault();
     if (!form.companyName || !form.bankAccount || !form.accountHolder) return;
     if (form.categories.length === 0) return;
+    const payload: PartnerInput = {
+      ...form,
+      bankName: form.bankName?.trim() || undefined,
+      linkSlots: normalizePartnerLinkSlots(form.linkSlots),
+    };
     if (editing) {
-      updatePartner(editing.id, form);
+      updatePartner(editing.id, payload);
     } else {
-      addPartner(form);
+      addPartner(payload);
     }
     setModalOpen(false);
   }
@@ -167,47 +226,39 @@ export function PartnersManager() {
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {TAB_CONFIG.filter((t) => t.key !== "all").map(({ key, label, icon: Icon, accent }) => (
-          <StatCard
+        {TAB_CONFIG.filter((t) => t.key !== "all").map(({ key, label, icon: Icon }) => (
+          <div
             key={key}
-            label={`${label} 파트너`}
-            value={`${counts[key]}곳`}
-            icon={Icon}
-            accent={accent}
-          />
+            className={cn(
+              tab === key && "rounded-xl ring-2 ring-emerald-500/40 ring-offset-2 ring-offset-zinc-950",
+            )}
+          >
+            <StatCard
+              label={`${label} 파트너`}
+              value={`${counts[key]}곳`}
+              icon={Icon}
+              accent={tabStatAccent(key)}
+              onValueClick={() => setTab((prev) => (prev === key ? "all" : key))}
+            />
+          </div>
         ))}
       </div>
-
-      <Card className="mb-4 p-1">
-        <div className="flex flex-wrap gap-1">
-          {TAB_CONFIG.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              className={cn(
-                "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-                tab === key
-                  ? "bg-emerald-500/15 text-emerald-400"
-                  : "text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-              <span className="rounded-md bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">
-                {counts[key]}
-              </span>
-            </button>
-          ))}
-        </div>
-      </Card>
 
       <Card className="mb-4 flex flex-wrap items-center gap-3">
         <SearchBar
           value={search}
           onChange={setSearch}
-          placeholder="업체명 · 담당자 · 계좌 검색"
+          placeholder="업체명 · 우리쪽 담당 · 파트너 담당 · 메모 · 계좌 검색"
         />
+        {tab !== "all" && (
+          <button
+            type="button"
+            onClick={() => setTab("all")}
+            className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
+          >
+            {TAB_CONFIG.find((t) => t.key === tab)?.label} 필터 · 전체 보기
+          </button>
+        )}
         <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-400">
           <input
             type="checkbox"
@@ -215,7 +266,7 @@ export function PartnersManager() {
             onChange={(e) => setShowInactive(e.target.checked)}
             className="rounded border-zinc-600"
           />
-          비활성 포함
+          종료·불가 포함
         </label>
       </Card>
 
@@ -224,10 +275,12 @@ export function PartnersManager() {
           <tr>
             <Th>파트너사</Th>
             <Th>분야</Th>
-            <Th>담당자</Th>
+            <Th>우리쪽 담당</Th>
+            <Th>파트너 담당</Th>
             <Th>연락처</Th>
             <Th>계좌</Th>
             <Th>단가</Th>
+            <Th>메모</Th>
             <Th>원가 연결</Th>
             <Th>상태</Th>
             {canManagePartners && <Th className="w-24">관리</Th>}
@@ -237,21 +290,30 @@ export function PartnersManager() {
           {filtered.map((p) => (
             <Tr key={p.id}>
               <Td>
-                <p className="font-medium text-zinc-100">{p.companyName}</p>
-                {p.memo && (
-                  <p className="mt-0.5 max-w-[180px] truncate text-xs text-zinc-600">
-                    {p.memo}
-                  </p>
-                )}
+                <Link
+                  href={`/partners/${p.id}`}
+                  className="font-medium text-zinc-100 transition-colors hover:text-emerald-300 hover:underline"
+                >
+                  {p.companyName}
+                </Link>
               </Td>
               <Td>
                 <div className="flex flex-wrap gap-1">
                   {p.categories.map((c) => (
-                    <Badge key={c} variant="info" className="text-[10px]">
-                      {PARTNER_CATEGORY_LABELS[c]}
-                    </Badge>
+                    <PartnerFilterBadge
+                      key={c}
+                      filters={partnerFilterDefinitions}
+                      taskChannels={taskChannels}
+                      categoryId={c}
+                      className="text-[10px]"
+                    />
                   ))}
                 </div>
+              </Td>
+              <Td className="text-sm text-zinc-300">
+                {p.internalManagerUserId
+                  ? getUserName(data, p.internalManagerUserId)
+                  : "-"}
               </Td>
               <Td>{p.contactName ?? "-"}</Td>
               <Td className="text-xs">
@@ -260,6 +322,9 @@ export function PartnersManager() {
                 {!p.phone && !p.email && "-"}
               </Td>
               <Td className="font-mono text-xs">
+                {p.bankName && (
+                  <p className="text-zinc-400">{p.bankName}</p>
+                )}
                 {p.bankAccount}
                 <br />
                 <span className="text-zinc-600">{p.accountHolder}</span>
@@ -267,14 +332,25 @@ export function PartnersManager() {
               <Td className="font-mono text-sm">
                 {p.unitPrice ? formatKRW(p.unitPrice) : "-"}
               </Td>
-              <Td>
-                <Badge variant={expenseCount(p.id) > 0 ? "success" : "default"}>
-                  {expenseCount(p.id)}건
-                </Badge>
+              <Td className="max-w-[160px] text-xs text-zinc-400">
+                {p.memo ? (
+                  <p className="line-clamp-2 whitespace-pre-wrap" title={p.memo}>
+                    {p.memo}
+                  </p>
+                ) : (
+                  "-"
+                )}
               </Td>
               <Td>
-                <Badge variant={p.isActive ? "success" : "default"}>
-                  {p.isActive ? "활성" : "비활성"}
+                <Link href={`/partners/${p.id}#collaboration`}>
+                  <Badge variant={expenseCount(p.id) > 0 ? "success" : "default"}>
+                    {expenseCount(p.id)}건
+                  </Badge>
+                </Link>
+              </Td>
+              <Td>
+                <Badge variant={getPartnerStatusBadgeVariant(p.status)}>
+                  {getPartnerStatusLabel(p.status)}
                 </Badge>
               </Td>
               {canManagePartners && (
@@ -327,34 +403,63 @@ export function PartnersManager() {
           <div>
             <p className="mb-2 text-xs font-medium text-zinc-400">집행 분야 *</p>
             <div className="flex flex-wrap gap-3">
-              {PARTNER_CATEGORIES.map((cat) => (
+              {(activePartnerFilters.length
+                ? activePartnerFilters
+                : PARTNER_CATEGORIES.map((id) => ({ id, label: id }))
+              ).map((cat) => {
+                const selected = form.categories.includes(cat.id);
+                return (
                 <label
-                  key={cat}
+                  key={cat.id}
                   className={cn(
-                    "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm",
-                    form.categories.includes(cat)
-                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                    "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
+                    selected
+                      ? getPartnerFilterBadgeClassName(
+                          partnerFilterDefinitions,
+                          cat.id,
+                          taskChannels,
+                        )
                       : "border-zinc-800 text-zinc-500",
                   )}
                 >
                   <input
                     type="checkbox"
-                    checked={form.categories.includes(cat)}
-                    onChange={() => toggleCategory(cat)}
+                    checked={selected}
+                    onChange={() => toggleCategory(cat.id)}
                     className="rounded border-zinc-600"
                   />
-                  {PARTNER_CATEGORY_LABELS[cat]}
+                  {cat.label}
                 </label>
-              ))}
+              );
+              })}
             </div>
             <p className="mt-1 text-[11px] text-zinc-600">
-              선택: {formatPartnerCategories(form.categories)}
+              선택: {formatPartnerCategories(form.categories, partnerFilterDefinitions)}
             </p>
           </div>
 
+          <Select
+            label="우리쪽 담당자"
+            value={form.internalManagerUserId ?? ""}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                internalManagerUserId: e.target.value || undefined,
+              })
+            }
+          >
+            <option value="">미지정</option>
+            {internalManagers.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+                {u.role === "team_leader" ? " (팀장)" : ""}
+              </option>
+            ))}
+          </Select>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
-              label="담당자"
+              label="파트너사 담당"
               value={form.contactName ?? ""}
               onChange={(e) =>
                 setForm({ ...form, contactName: e.target.value })
@@ -372,7 +477,13 @@ export function PartnersManager() {
             value={form.email ?? ""}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Input
+              label="은행명"
+              value={form.bankName ?? ""}
+              onChange={(e) => setForm({ ...form, bankName: e.target.value })}
+              placeholder="국민은행, 신한은행 등"
+            />
             <Input
               label="계좌번호 *"
               value={form.bankAccount}
@@ -390,6 +501,42 @@ export function PartnersManager() {
               required
             />
           </div>
+
+          <div>
+            <p className="mb-2 text-xs font-medium text-zinc-400">
+              파트너 링크 · 닉네임
+            </p>
+            <div className="space-y-3">
+              {(form.linkSlots ?? normalizePartnerLinkSlots()).map((slot, idx) => (
+                <div
+                  key={idx}
+                  className="grid gap-3 rounded-lg border border-zinc-800/80 bg-zinc-950/30 p-3 sm:grid-cols-2"
+                >
+                  <Input
+                    label={`링크 ${idx + 1}`}
+                    value={slot.url ?? ""}
+                    onChange={(e) => {
+                      const next = normalizePartnerLinkSlots(form.linkSlots);
+                      next[idx] = { ...next[idx], url: e.target.value };
+                      setForm({ ...form, linkSlots: next });
+                    }}
+                    placeholder="https://..."
+                  />
+                  <Input
+                    label={`닉네임 ${idx + 1}`}
+                    value={slot.nickname ?? ""}
+                    onChange={(e) => {
+                      const next = normalizePartnerLinkSlots(form.linkSlots);
+                      next[idx] = { ...next[idx], nickname: e.target.value };
+                      setForm({ ...form, linkSlots: next });
+                    }}
+                    placeholder="채널·계정명"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
           <Input
             label="기본 단가 (원, 참고)"
             type="number"
@@ -406,13 +553,20 @@ export function PartnersManager() {
             label="메모"
             value={form.memo ?? ""}
             onChange={(e) => setForm({ ...form, memo: e.target.value })}
-            rows={2}
+            placeholder="파트너 특이사항, 협의 내용 등"
+            rows={3}
           />
-          <Checkbox
-            label="활성 파트너 (원가 등록 시 선택 가능)"
-            checked={form.isActive}
-            onChange={(v) => setForm({ ...form, isActive: v })}
-          />
+          <Select
+            label="파트너 상태"
+            value={form.status}
+            onChange={(e) =>
+              setForm({ ...form, status: e.target.value as PartnerStatus })
+            }
+          >
+            <option value="active">활동파트너 (원가 등록 시 선택 가능)</option>
+            <option value="ended">종료파트너</option>
+            <option value="blocked">불가파트너</option>
+          </Select>
           <div className="flex justify-end gap-2 border-t border-zinc-800 pt-4">
             <Button
               type="button"

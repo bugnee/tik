@@ -11,9 +11,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <AppReadyGate>
       <AuthGate>
         <RoleProvider>
-          <div className="relative min-h-screen bg-zinc-950">
+          <div className="relative min-h-screen bg-[var(--background)]">
             <div className="pointer-events-none fixed inset-0 overflow-hidden">
-              <div className="absolute -left-40 top-0 h-[500px] w-[500px] rounded-full bg-emerald-600/5 blur-[120px]" />
+              <div className="absolute -left-40 top-0 h-[500px] w-[500px] rounded-full bg-emerald-600/5 blur-[120px] dark:bg-emerald-600/5" />
               <div className="absolute -right-40 top-1/3 h-[400px] w-[400px] rounded-full bg-cyan-600/5 blur-[100px]" />
               <div className="absolute bottom-0 left-1/2 h-[300px] w-[600px] -translate-x-1/2 rounded-full bg-violet-600/3 blur-[100px]" />
             </div>

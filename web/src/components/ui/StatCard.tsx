@@ -27,27 +27,27 @@ export function StatCard({
   };
 
   return (
-    <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-4 backdrop-blur-sm sm:rounded-2xl sm:p-5">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--card-muted)] p-4 backdrop-blur-sm sm:rounded-2xl sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-1 sm:space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+          <p className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
             {label}
           </p>
           {onValueClick ? (
             <button
               type="button"
               onClick={onValueClick}
-              className="text-left text-xl font-bold tracking-tight text-zinc-50 underline-offset-4 transition-colors hover:text-emerald-300 hover:underline sm:text-2xl"
+              className="text-left text-xl font-bold tracking-tight text-[var(--foreground)] underline-offset-4 transition-colors hover:text-emerald-600 hover:underline dark:hover:text-emerald-300 sm:text-2xl"
             >
               {value}
             </button>
           ) : (
-            <p className="text-xl font-bold tracking-tight text-zinc-50 sm:text-2xl">
+            <p className="text-xl font-bold tracking-tight text-[var(--foreground)] sm:text-2xl">
               {value}
             </p>
           )}
           {subValue && (
-            <p className="text-xs text-zinc-500">{subValue}</p>
+            <p className="text-xs text-[var(--muted)]">{subValue}</p>
           )}
           {trend && (
             <p

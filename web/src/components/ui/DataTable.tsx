@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
 export function PageHeader({
   title,
@@ -12,11 +13,11 @@ export function PageHeader({
   return (
     <div className="mb-4 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div className="min-w-0">
-        <h1 className="text-xl font-bold tracking-tight text-zinc-50 sm:text-2xl">
+        <h1 className="text-xl font-bold tracking-tight text-[var(--foreground)] sm:text-2xl">
           {title}
         </h1>
         {description && (
-          <p className="mt-1 text-sm text-zinc-500">{description}</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">{description}</p>
         )}
       </div>
       {action && (
@@ -43,14 +44,14 @@ export function SearchBar({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="h-10 w-full max-w-xs rounded-xl border border-zinc-700 bg-zinc-950/60 px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-emerald-500/50 focus:outline-none sm:w-64"
+      className="h-10 w-full max-w-xs rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:border-emerald-500/50 focus:outline-none sm:w-64"
     />
   );
 }
 
 export function EmptyState({ message }: { message: string }) {
   return (
-    <div className="py-16 text-center text-sm text-zinc-500">{message}</div>
+    <div className="py-16 text-center text-sm text-[var(--muted)]">{message}</div>
   );
 }
 
@@ -62,7 +63,7 @@ export function DataTable({
   className?: string;
 }) {
   return (
-    <div className={cn("overflow-x-auto rounded-xl border border-zinc-800/80 sm:rounded-2xl", className)}>
+    <div className={cn("overflow-x-auto rounded-xl border border-[var(--border)] sm:rounded-2xl", className)}>
       <table className="w-full min-w-[480px] text-sm">{children}</table>
     </div>
   );
@@ -72,7 +73,7 @@ export function Th({ children, className }: { children?: React.ReactNode; classN
   return (
     <th
       className={cn(
-        "border-b border-zinc-800 bg-zinc-900/80 px-2 py-2 text-left text-xs font-medium text-zinc-500 sm:px-4 sm:py-3",
+        "border-b border-[var(--border)] bg-[var(--card-muted)] px-2 py-2 text-left text-xs font-medium text-[var(--muted)] sm:px-4 sm:py-3",
         className,
       )}
     >
@@ -81,9 +82,50 @@ export function Th({ children, className }: { children?: React.ReactNode; classN
   );
 }
 
+export function SortableTh({
+  children,
+  className,
+  active,
+  direction,
+  onClick,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+  active?: boolean;
+  direction?: "asc" | "desc";
+  onClick?: () => void;
+}) {
+  const Icon = active
+    ? direction === "asc"
+      ? ArrowUp
+      : ArrowDown
+    : ArrowUpDown;
+
+  return (
+    <th
+      className={cn(
+        "border-b border-[var(--border)] bg-[var(--card-muted)] px-2 py-2 text-left text-xs font-medium sm:px-4 sm:py-3",
+        className,
+      )}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "inline-flex items-center gap-1 transition-colors hover:text-emerald-400",
+          active ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--muted)]",
+        )}
+      >
+        {children}
+        <Icon className="h-3.5 w-3.5 shrink-0 opacity-70" />
+      </button>
+    </th>
+  );
+}
+
 export function Td({ children, className }: { children?: React.ReactNode; className?: string }) {
   return (
-    <td className={cn("border-b border-zinc-800/50 px-2 py-2 text-zinc-300 sm:px-4 sm:py-3", className)}>
+    <td className={cn("border-b border-[var(--border)] px-2 py-2 text-[var(--foreground-secondary)] sm:px-4 sm:py-3", className)}>
       {children}
     </td>
   );
@@ -91,6 +133,6 @@ export function Td({ children, className }: { children?: React.ReactNode; classN
 
 export function Tr({ children }: { children: React.ReactNode }) {
   return (
-    <tr className="transition-colors hover:bg-zinc-900/40">{children}</tr>
+    <tr className="transition-colors hover:bg-[var(--card-muted)]">{children}</tr>
   );
 }

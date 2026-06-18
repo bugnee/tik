@@ -7,24 +7,30 @@ import { ExecutiveDashboard } from "./ExecutiveDashboard";
 import { CeoDashboard } from "./CeoDashboard";
 import { FinanceManagerDashboard } from "./FinanceManagerDashboard";
 import { ClientDashboard } from "./ClientDashboard";
-import { PartnerWorkDashboard } from "@/components/work-orders/PartnerWorkDashboard";
+import { PartnerDashboard } from "./PartnerDashboard";
 import { ClientPipelineBanner } from "@/components/contracts/ClientPipelineWidget";
+import { DashboardWorkStatusPanel } from "@/components/dashboard/DashboardWorkStatusPanel";
+import { WorkEvaluationPanel } from "@/components/evaluation/WorkEvaluationPanel";
 import { ROLE_LABELS } from "@/lib/types";
 import { ROLE_BANNER_CLASSES } from "@/lib/role-utils";
 
 export function DashboardByRole() {
-  const { activeRole } = useRole();
+  const { activeRole, canViewWorkEvaluations } = useRole();
+
+  const isPortalRole = activeRole === "client" || activeRole === "partner";
 
   return (
     <div className="space-y-4">
-      {activeRole !== "client" && <RoleBanner role={activeRole} />}
-      {activeRole !== "client" && <ClientPipelineBanner />}
+      {!isPortalRole && <RoleBanner role={activeRole} />}
+      {!isPortalRole && <ClientPipelineBanner />}
+      {!isPortalRole && <DashboardWorkStatusPanel />}
+      {canViewWorkEvaluations && <WorkEvaluationPanel compact />}
       {activeRole === "staff" && <StaffDashboard />}
       {activeRole === "team_leader" && <TeamLeaderDashboard />}
       {activeRole === "executive" && <ExecutiveDashboard />}
       {activeRole === "ceo" && <CeoDashboard />}
       {activeRole === "finance_manager" && <FinanceManagerDashboard />}
-      {activeRole === "partner" && <PartnerWorkDashboard />}
+      {activeRole === "partner" && <PartnerDashboard />}
       {activeRole === "client" && <ClientDashboard />}
     </div>
   );

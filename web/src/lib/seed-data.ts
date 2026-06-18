@@ -7,6 +7,7 @@ import type {
   ContractMemo,
   ContractRecord,
   Execution,
+  ExperienceCampaign,
   Expense,
   Partner,
   PartnerReferralLead,
@@ -16,15 +17,33 @@ import type {
   QaMessage,
   QaThread,
   TerminationReason,
+  User,
+  WorkEvaluation,
   WorkOrder,
 } from "./types";
-import {
-  emptyCostLines,
-  generateWorkOrdersForContract,
-} from "./work-order-utils";
 import { DEFAULT_TASK_CHANNELS } from "./task-channel-utils";
 import { DEFAULT_EXPENSE_CATEGORIES } from "./expense-category-utils";
-import { calcBonusAmounts, defaultBonusPolicy } from "./bonus-utils";
+import { DEFAULT_PARTNER_FILTERS } from "./partner-filter-utils";
+import { DEFAULT_EXPERIENCE_FIELDS } from "./experience-field-utils";
+import { normalizePartner, type LegacyPartnerInput } from "./partner-utils";
+import { calcBonusAmounts, calcBonusClosingDeadline, calcScheduledPayDate, defaultBonusPolicy } from "./bonus-utils";
+import {
+  buildWorkEvaluationInput,
+  computeEvaluationMetrics,
+  computeAutoEvaluationScores,
+  currentEvaluationPeriod,
+} from "./work-evaluation-utils";
+import {
+  buildScaledClientNames,
+  buildScaledExperienceCampaigns,
+  buildScaledExtensionApprovals,
+  buildScaledWorkOrders,
+  buildStaffUsers,
+  resolveExecutionProgress,
+  SEED_SCALE,
+  staffIdForIndex,
+  teamIdForIndex,
+} from "./seed-data-generator";
 
 /** 데모 기준일: 2026-06-16 (6월 업무 진행 중) */
 const DEMO_TODAY = "2026-06-16";
@@ -60,7 +79,7 @@ function buildPostLinks(
   return links;
 }
 
-const CLIENT_NAMES = [
+const CLIENT_NAME_BASE = [
   "서울맛집연구소", "부산해운대펜션", "제주오름카페", "강남뷰티클리닉", "홍대공연장",
   "경주한옥스테이", "대구패션몰", "인천공항호텔", "수원왕갈비", "전주비빔밥",
   "여수밤바다", "춘천닭갈비", "속초설악리조트", "포항철강박물관", "울산자동차",
@@ -82,44 +101,57 @@ const TERMINATION_REASONS: TerminationReason[] = [
 ];
 
 function buildContracts(): Contract[] {
-  const teams = ["team-a", "team-b", "team-c"];
-  const staffIds = ["u-staff-1", "u-staff-2", "u-staff-3", "u-staff-4"];
+  const clientNames = buildScaledClientNames(CLIENT_NAME_BASE);
 
-  return CLIENT_NAMES.map((name, i) => {
-    const monthlyFee = 800_000 + (i % 7) * 150_000;
-    const targetOpt = 8 + (i % 5);
-    const targetInf = 4 + (i % 3);
-    const optDone = Math.min(
-      targetOpt,
-      Math.floor(targetOpt * (0.55 + (i % 10) * 0.04)),
-    );
-    const infDone = Math.min(
-      targetInf,
-      Math.floor(targetInf * (0.5 + (i % 8) * 0.05)),
-    );
+  return clientNames.map((name, i) => {
+    const monthlyFee = 650_000 + (i % 11) * 125_000 + (i % 3) * 50_000;
+    const targetOpt = 6 + (i % 7);
+    const targetInf = 3 + (i % 5);
+    const targetExperience = 4 + (i % 6);
+    const targetInstaCard = 2 + (i % 4);
 
-    const isTerminated = i % 11 === 0;
+    const optProgress = resolveExecutionProgress(i, "optimized", targetOpt);
+    const infProgress = resolveExecutionProgress(i, "influencer", targetInf);
+    const optDone = optProgress.completedCount;
+    const infDone = infProgress.completedCount;
+
+    const isTerminated = i % 13 === 0;
     let contractEndDate: string;
     if (isTerminated) {
-      contractEndDate = addDays(DEMO_TODAY, -3);
-    } else if (i % 5 === 1) {
-      contractEndDate = addDays(DEMO_TODAY, 5);
-    } else if (i % 5 === 2) {
-      contractEndDate = addDays(DEMO_TODAY, 12);
+      contractEndDate = addDays(DEMO_TODAY, -(i % 9) - 1);
+    } else if (i % 6 === 1) {
+      contractEndDate = addDays(DEMO_TODAY, 3 + (i % 5));
+    } else if (i % 6 === 2) {
+      contractEndDate = addDays(DEMO_TODAY, 10 + (i % 8));
+    } else if (i % 6 === 3) {
+      contractEndDate = addDays(DEMO_TODAY, 18 + (i % 6));
     } else {
       contractEndDate = MONTH_END;
     }
 
-    const isExtension = i % 5 === 0 && !isTerminated;
-    const isLeaderDirect = i === 40 || i === 41;
+    const isExtension = (i % 7 === 0 || i % 11 === 4) && !isTerminated;
+    const isLeaderDirect = i % 47 === 0 || i % 53 === 12;
+    const hasReferralPromo = i % 9 === 0 || i % 17 === 3;
 
     let clientDepositStatus: ClientDepositStatus | undefined;
     if ((isExtension || isLeaderDirect) && !isTerminated) {
-      if (i % 12 === 0) clientDepositStatus = "overdue";
-      else if (i % 10 === 0) clientDepositStatus = "other";
-      else if (i % 4 === 0) clientDepositStatus = "pending";
+      const depositBucket = i % 12;
+      if (depositBucket === 0) clientDepositStatus = "overdue";
+      else if (depositBucket === 1) clientDepositStatus = "other";
+      else if (depositBucket <= 4) clientDepositStatus = "pending";
       else clientDepositStatus = "completed";
     }
+
+    const assignedStaffId = isLeaderDirect
+      ? i % 2 === 0
+        ? "u-leader-1"
+        : "u-leader-2"
+      : staffIdForIndex(i);
+    const teamId = isLeaderDirect
+      ? i % 2 === 0
+        ? "team-a"
+        : "team-b"
+      : teamIdForIndex(i);
 
     return {
       id: `c-${i + 1}`,
@@ -127,14 +159,14 @@ function buildContracts(): Contract[] {
       monthlyFee,
       targetOptimized: targetOpt,
       targetInfluencer: targetInf,
-      targetExperience: 5 + (i % 4),
-      targetInstaCard: 3 + (i % 3),
-      hasPlaceSetting: i % 2 === 0,
+      targetExperience,
+      targetInstaCard,
+      hasPlaceSetting: i % 3 !== 1,
       isExtension: isLeaderDirect ? true : isExtension,
-      hasReferralPromo: i % 8 === 0,
-      ...(i % 8 === 0 && { referrerPartnerId: "p-referral-1" }),
-      assignedStaffId: isLeaderDirect ? "u-leader-1" : staffIds[i % 4],
-      teamId: isLeaderDirect ? "team-a" : teams[i % 3],
+      hasReferralPromo,
+      ...(hasReferralPromo && { referrerPartnerId: "p-referral-1" }),
+      assignedStaffId,
+      teamId,
       optimizedDone: optDone,
       influencerDone: infDone,
       contractStartDate: MONTH_START,
@@ -142,28 +174,29 @@ function buildContracts(): Contract[] {
       status: isTerminated ? "terminated" : "active",
       ...(isTerminated && {
         terminationReason: TERMINATION_REASONS[i % TERMINATION_REASONS.length],
-        terminatedAt: addDays(DEMO_TODAY, -3),
+        terminatedAt: contractEndDate,
       }),
       renewalMonthCount: isTerminated
-        ? 3
+        ? 2 + (i % 4)
         : isLeaderDirect
-          ? 5
+          ? 5 + (i % 2)
           : isExtension
-            ? 4 + (i % 3)
-            : 1,
+            ? 4 + (i % 4)
+            : 1 + (i % 3),
       ...(clientDepositStatus && { clientDepositStatus }),
       ...(!isTerminated &&
         clientDepositStatus === "completed" && {
           lastClientDepositDate: addDays(
             MONTH_START,
-            -15 - (i % 6) * 12,
+            -12 - (i % 8) * 9,
           ),
         }),
       ...(!isTerminated &&
-        !isExtension && {
+        !isExtension &&
+        i % 5 !== 0 && {
           lastClientDepositDate: addDays(
             MONTH_START,
-            -15 - (i % 6) * 12,
+            -10 - (i % 7) * 8,
           ),
         }),
     };
@@ -171,12 +204,12 @@ function buildContracts(): Contract[] {
 }
 
 function buildContractRecords(contracts: Contract[]): ContractRecord[] {
-  const staffIds = ["u-staff-1", "u-staff-2", "u-staff-3", "u-staff-4"];
+  const staffIds = buildStaffUsers().map((user) => user.id);
   const records: ContractRecord[] = [];
 
   contracts.forEach((c, i) => {
-    if (i < 15) {
-      const prevStaff = staffIds[(i + 1) % 4];
+    if (i % 7 === 0) {
+      const prevStaff = staffIds[(i + 1) % staffIds.length];
       records.push({
         id: `cr-${i}-1`,
         contractId: c.id,
@@ -193,7 +226,7 @@ function buildContractRecords(contracts: Contract[]): ContractRecord[] {
         id: `cr-${i}-2`,
         contractId: c.id,
         period: "2026-05",
-        assignedStaffId: staffIds[(i + 2) % 4],
+        assignedStaffId: staffIds[(i + 2) % staffIds.length],
         teamId: c.teamId,
         startedAt: "2026-05-01",
         endedAt: "2026-05-31",
@@ -223,7 +256,7 @@ function buildContractRecords(contracts: Contract[]): ContractRecord[] {
 
 function buildContractMemos(contracts: Contract[]): ContractMemo[] {
   const memos: ContractMemo[] = [];
-  contracts.slice(0, 8).forEach((c, i) => {
+  contracts.forEach((c, i) => {
     if (i === 0) {
       memos.push(
         {
@@ -243,11 +276,16 @@ function buildContractMemos(contracts: Contract[]): ContractMemo[] {
           authorUserId: "u-leader-1",
         },
       );
-    } else if (i % 4 === 0) {
+    } else if (i % 8 === 0) {
       memos.push({
         id: `cm-${i}`,
         contractId: c.id,
-        body: "연장 협의 진행 중 — 예산 유지 조건으로 3개월 연장 검토",
+        body:
+          i % 16 === 0
+            ? "연장 협의 진행 중 — 예산 유지 조건으로 3개월 연장 검토"
+            : i % 24 === 0
+              ? "파트너 일정 지연 — 대체 업체 검토 중"
+              : "월간 리포트 발송 · 추가 키워드 요청 접수",
         createdAt: addDays(DEMO_TODAY, -2 - (i % 5)),
         assignedStaffId: c.assignedStaffId,
         authorUserId: c.assignedStaffId,
@@ -297,28 +335,26 @@ function buildExecutions(contracts: Contract[]): Execution[] {
 
   contracts.forEach((c, i) => {
     const workStart = addDays(MONTH_START, (i % 6) + 1);
-    const optDue = addDays(MONTH_END, -2 - (i % 3));
-    const infDue = MONTH_END;
+    const optDue = addDays(MONTH_END, -2 - (i % 5));
+    const infDue = addDays(MONTH_END, -(i % 4));
 
-    const optStatus =
-      c.optimizedDone >= c.targetOptimized
-        ? "completed"
-        : c.optimizedDone > 0
-          ? "in_progress"
-          : "pending";
-    const infStatus =
-      c.influencerDone >= c.targetInfluencer
-        ? "completed"
-        : c.influencerDone > 0
-          ? "in_progress"
-          : "pending";
+    const optProgress = resolveExecutionProgress(
+      i,
+      "optimized",
+      c.targetOptimized,
+    );
+    const infProgress = resolveExecutionProgress(
+      i,
+      "influencer",
+      c.targetInfluencer,
+    );
 
     const optCompletedDate =
-      optStatus === "completed"
+      optProgress.status === "completed"
         ? addDays(workStart, c.optimizedDone * 2)
         : undefined;
     const infCompletedDate =
-      infStatus === "completed"
+      infProgress.status === "completed"
         ? addDays(workStart, c.influencerDone * 2 + 3)
         : undefined;
 
@@ -327,18 +363,23 @@ function buildExecutions(contracts: Contract[]): Execution[] {
       contractId: c.id,
       type: "optimized",
       taskChannelId: "blog",
-      status: optStatus,
+      status: optProgress.status,
       completedCount: c.optimizedDone,
       targetCount: c.targetOptimized,
       dueDate: optDue,
-      enteredAt: optStatus === "pending" ? addDays(DEMO_TODAY, -2) : workStart,
+      enteredAt:
+        optProgress.status === "pending"
+          ? addDays(DEMO_TODAY, -2 - (i % 3))
+          : workStart,
       completedDate: optCompletedDate,
       memo:
-        optStatus === "completed"
+        optProgress.status === "completed"
           ? `${DEMO_MONTH} 최적블로그 월간 목표 달성`
-          : optStatus === "in_progress"
+          : optProgress.status === "in_progress"
             ? "주 2건씩 포스팅 진행 중"
-            : undefined,
+            : optProgress.status === "delayed"
+              ? "마감 임박 · 추가 포스팅 필요"
+              : undefined,
       postLinks: buildPostLinks(
         c.optimizedDone,
         i,
@@ -353,18 +394,23 @@ function buildExecutions(contracts: Contract[]): Execution[] {
       contractId: c.id,
       type: "influencer",
       taskChannelId: "influencer",
-      status: infStatus,
+      status: infProgress.status,
       completedCount: c.influencerDone,
       targetCount: c.targetInfluencer,
       dueDate: infDue,
-      enteredAt: infStatus === "pending" ? addDays(DEMO_TODAY, -1) : addDays(workStart, 2),
+      enteredAt:
+        infProgress.status === "pending"
+          ? addDays(DEMO_TODAY, -1 - (i % 4))
+          : addDays(workStart, 2),
       completedDate: infCompletedDate,
       memo:
-        infStatus === "completed"
+        infProgress.status === "completed"
           ? "인플루언서 콘텐츠 검수 완료"
-          : infStatus === "in_progress"
+          : infProgress.status === "in_progress"
             ? "2차 인플루언서 섭외 진행"
-            : undefined,
+            : infProgress.status === "delayed"
+              ? "섭외 지연 · 대체 후보 검토"
+              : undefined,
       postLinks: buildPostLinks(
         c.influencerDone,
         i,
@@ -379,7 +425,7 @@ function buildExecutions(contracts: Contract[]): Execution[] {
 }
 
 function buildPartners(): Partner[] {
-  return [
+  const raw: LegacyPartnerInput[] = [
     {
       id: "p-press-1",
       companyName: "미디어랩 PR",
@@ -387,11 +433,19 @@ function buildPartners(): Partner[] {
       contactName: "김기자",
       phone: "02-1234-5678",
       email: "press@medialab.kr",
+      bankName: "국민은행",
       bankAccount: "110-234-567890",
       accountHolder: "미디어랩(주)",
+      linkSlots: [
+        {
+          url: "https://blog.naver.com/medialab_pr",
+          nickname: "미디어랩PR",
+        },
+      ],
       unitPrice: 120_000,
+      internalManagerUserId: "u-staff-1",
       memo: "IT·맛집 기자단 전문",
-      isActive: true,
+      status: "active",
     },
     {
       id: "p-press-2",
@@ -403,7 +457,8 @@ function buildPartners(): Partner[] {
       bankAccount: "333-111-222333",
       accountHolder: "뉴스브릿지",
       unitPrice: 95_000,
-      isActive: true,
+      internalManagerUserId: "u-leader-1",
+      status: "active",
     },
     {
       id: "p-exp-1",
@@ -415,8 +470,9 @@ function buildPartners(): Partner[] {
       bankAccount: "1002-345-678901",
       accountHolder: "체험단킹",
       unitPrice: 85_000,
+      internalManagerUserId: "u-staff-2",
       memo: "맛집·뷰티 체험단",
-      isActive: true,
+      status: "active",
     },
     {
       id: "p-exp-2",
@@ -427,7 +483,7 @@ function buildPartners(): Partner[] {
       bankAccount: "110-456-789012",
       accountHolder: "리뷰파워(주)",
       unitPrice: 78_000,
-      isActive: true,
+      status: "active",
     },
     {
       id: "p-inf-1",
@@ -439,8 +495,9 @@ function buildPartners(): Partner[] {
       bankAccount: "333-444-555666",
       accountHolder: "인플허브",
       unitPrice: 350_000,
+      internalManagerUserId: "u-staff-3",
       memo: "마이크로~매크로 인플루언서",
-      isActive: true,
+      status: "active",
     },
     {
       id: "p-inf-2",
@@ -451,7 +508,7 @@ function buildPartners(): Partner[] {
       bankAccount: "1002-777-888999",
       accountHolder: "크리에이터즈",
       unitPrice: 280_000,
-      isActive: true,
+      status: "active",
     },
     {
       id: "p-blog-1",
@@ -463,8 +520,9 @@ function buildPartners(): Partner[] {
       bankAccount: "110-567-890123",
       accountHolder: "블로그팩토리",
       unitPrice: 45_000,
+      internalManagerUserId: "u-staff-4",
       memo: "네이버 최적블로그 · 키워드 상위",
-      isActive: true,
+      status: "active",
     },
     {
       id: "p-blog-2",
@@ -475,7 +533,7 @@ function buildPartners(): Partner[] {
       bankAccount: "333-777-888999",
       accountHolder: "네이버SEO랩",
       unitPrice: 52_000,
-      isActive: true,
+      status: "active",
     },
     {
       id: "p-multi-1",
@@ -487,8 +545,9 @@ function buildPartners(): Partner[] {
       bankAccount: "1002-999-000111",
       accountHolder: "트립미디어(주)",
       unitPrice: 150_000,
+      internalManagerUserId: "u-leader-2",
       memo: "기자단·체험단·인플 통합 집행",
-      isActive: true,
+      status: "active",
     },
     {
       id: "p-multi-2",
@@ -499,7 +558,7 @@ function buildPartners(): Partner[] {
       bankAccount: "110-888-999000",
       accountHolder: "콘텐츠올",
       unitPrice: 65_000,
-      isActive: true,
+      status: "active",
     },
     {
       id: "p-exp-3",
@@ -509,8 +568,8 @@ function buildPartners(): Partner[] {
       bankAccount: "333-222-333444",
       accountHolder: "맛집체험단",
       unitPrice: 72_000,
-      isActive: false,
-      memo: "계약 종료 · 비활성",
+      status: "ended",
+      memo: "계약 종료 · 종료파트너",
     },
     {
       id: "p-referral-1",
@@ -522,17 +581,27 @@ function buildPartners(): Partner[] {
       bankAccount: "1002-333-444555",
       accountHolder: "비즈리셀러망(주)",
       unitPrice: 0,
+      internalManagerUserId: "u-staff-1",
       memo: "고객 영업 · 월 10% 수수료",
-      isActive: true,
+      status: "active",
     },
   ];
+  return raw.map((partner, i) =>
+    normalizePartner({
+      ...partner,
+      registeredAt: addDays(DEMO_TODAY, -240 + i * 14),
+    }),
+  );
 }
 
 function buildExpenses(contracts: Contract[], partners: Partner[]): Expense[] {
   const pressPartner = partners.find((p) => p.id === "p-press-1")!;
   const expPartner = partners.find((p) => p.id === "p-exp-1")!;
 
-  return contracts.slice(0, 20).flatMap((c, i) => {
+  return contracts
+    .filter((c) => c.status === "active")
+    .filter((_, i) => i % 2 === 0)
+    .flatMap((c, i) => {
     const requestDay = addDays(MONTH_START, 3 + (i % 10));
     const expRequestDay = addDays(MONTH_START, 5 + (i % 8));
     const statusCycle = i % 5;
@@ -589,135 +658,11 @@ function buildExpenses(contracts: Contract[], partners: Partner[]): Expense[] {
   });
 }
 
-function buildSeedWorkOrders(contracts: Contract[]): WorkOrder[] {
-  const orders: WorkOrder[] = [];
-  for (const contractId of ["c-1", "c-2", "c-3", "c-5"]) {
-    const contract = contracts.find((c) => c.id === contractId);
-    if (!contract) continue;
-    const generated = generateWorkOrdersForContract(
-      contract,
-      orders,
-      DEFAULT_TASK_CHANNELS,
-    );
-    for (const g of generated) {
-      orders.push({
-        ...g,
-        id: `wo-${contractId}-${g.taskType}-${g.sequence}`,
-        costLines: g.costLines.length > 0 ? g.costLines : emptyCostLines(),
-        postLinks: g.postLinks ?? [],
-        memo: g.memo ?? "",
-      });
-    }
-  }
-
-  return orders.map((o) => {
-    if (o.id === "wo-c-1-blog-1") {
-      return {
-        ...o,
-        partnerId: "p-blog-1",
-        stage: "pending_approval" as const,
-        costLines: [
-          { type: "manuscript" as const, amount: 45_000 },
-          { type: "filming" as const, amount: 0 },
-          { type: "travel" as const, amount: 0 },
-          { type: "other" as const, amount: 5_000 },
-        ],
-        requestedBy: "u-staff-1",
-        requestedAt: addDays(MONTH_START, 4),
-      };
-    }
-    if (o.id === "wo-c-1-influencer-1") {
-      return {
-        ...o,
-        partnerId: "p-inf-1",
-        stage: "approved" as const,
-        costLines: [
-          { type: "manuscript" as const, amount: 0 },
-          { type: "filming" as const, amount: 280_000 },
-          { type: "travel" as const, amount: 30_000 },
-          { type: "other" as const, amount: 0 },
-        ],
-        approvedBy: "u-partner-3",
-        approvedAt: addDays(MONTH_START, 6),
-        requestedBy: "u-staff-1",
-        requestedAt: addDays(MONTH_START, 5),
-      };
-    }
-    if (o.id === "wo-c-1-referral-1") {
-      const contract = contracts.find((c) => c.id === "c-1");
-      const referralAmount = contract
-        ? Math.round(contract.monthlyFee * 0.1)
-        : 0;
-      return {
-        ...o,
-        partnerId: "p-referral-1",
-        stage: "pending_approval" as const,
-        costLines: [
-          { type: "manuscript" as const, amount: 0 },
-          { type: "filming" as const, amount: 0 },
-          { type: "travel" as const, amount: 0 },
-          { type: "other" as const, amount: referralAmount },
-        ],
-        memo: "서울맛집연구소 고객 소개 완료",
-        requestedBy: "u-staff-1",
-        requestedAt: addDays(MONTH_START, 2),
-      };
-    }
-    if (o.id === "wo-c-2-blog-1") {
-      return {
-        ...o,
-        partnerId: "p-blog-1",
-        stage: "delivered" as const,
-        costLines: [
-          { type: "manuscript" as const, amount: 52_000 },
-          { type: "filming" as const, amount: 0 },
-          { type: "travel" as const, amount: 0 },
-          { type: "other" as const, amount: 0 },
-        ],
-        postLinks: [
-          {
-            id: "pl-demo-1",
-            url: "https://blog.naver.com/tripit-demo-1",
-            completedDate: addDays(MONTH_START, 8),
-            enteredAt: addDays(MONTH_START, 8),
-          },
-        ],
-        memo: "키워드 상위 반영 완료",
-        deliveredAt: addDays(MONTH_START, 8),
-        requestedBy: "u-staff-2",
-        requestedAt: addDays(MONTH_START, 3),
-        approvedBy: "u-partner-2",
-        approvedAt: addDays(MONTH_START, 5),
-      };
-    }
-    if (o.id === "wo-c-3-experience-1") {
-      return {
-        ...o,
-        partnerId: "p-exp-1",
-        stage: "order_ready" as const,
-        costLines: [
-          { type: "manuscript" as const, amount: 85_000 },
-          { type: "filming" as const, amount: 0 },
-          { type: "travel" as const, amount: 15_000 },
-          { type: "other" as const, amount: 0 },
-        ],
-        postLinks: [
-          {
-            id: "pl-demo-2",
-            url: "https://blog.naver.com/tripit-exp-1",
-            completedDate: addDays(MONTH_START, 10),
-            enteredAt: addDays(MONTH_START, 10),
-          },
-        ],
-        memo: "체험단 10명 모집 완료",
-        paidAt: addDays(MONTH_START, 12),
-        paidBy: "u-staff-3",
-        expenseId: "e-seed-wo-1",
-        deliveredAt: addDays(MONTH_START, 11),
-      };
-    }
-    return o;
-  });
+function buildSeedWorkOrders(
+  contracts: Contract[],
+  partners: Partner[],
+): WorkOrder[] {
+  return buildScaledWorkOrders(contracts, partners, MONTH_START);
 }
 
 function buildBonusPayments(
@@ -733,7 +678,7 @@ function buildBonusPayments(
 
   return contracts
     .filter((c) => c.isExtension && c.renewalMonthCount >= 4)
-    .slice(0, 8)
+    .slice(0, 48)
     .map((c, i) => {
       const amounts = calcBonusAmounts(c, policy, calcCtx);
       const stages: BonusPayment["stage"][] = [
@@ -752,7 +697,8 @@ function buildBonusPayments(
       const paidAt = addDays(ceoAt, 2);
       const clientDepositDate =
         c.lastClientDepositDate ?? addDays(MONTH_START, -30);
-      const scheduledPayDate = addDays(clientDepositDate, 60);
+      const closingDeadline = calcBonusClosingDeadline(clientDepositDate);
+      const scheduledPayDate = calcScheduledPayDate(clientDepositDate);
 
       return {
         id: `bp-${i + 1}`,
@@ -762,6 +708,7 @@ function buildBonusPayments(
         ...amounts,
         renewalMonthAtRequest: c.renewalMonthCount,
         clientDepositDate,
+        closingDeadline,
         scheduledPayDate,
         stage,
         requestedBy: c.assignedStaffId,
@@ -934,24 +881,11 @@ export function createSeedData(): AppData {
   const contractMemos = buildContractMemos(contracts);
   const partnerReferralLeads = buildPartnerReferralLeads(contracts);
   const bonusPolicy = defaultBonusPolicy();
-  const workOrders = buildSeedWorkOrders(contracts);
-
-  return {
-    users: [
-      {
-        id: "u-staff-1",
-        name: "김민지",
-        role: "staff",
-        isFinancialViewer: false,
-        teamId: "team-a",
-        googleId: "demo-google-staff",
-        email: "staff@tripit.co.kr",
-      },
-      { id: "u-staff-2", name: "정하늘", role: "staff", isFinancialViewer: false, teamId: "team-a" },
-      { id: "u-staff-3", name: "윤서아", role: "staff", isFinancialViewer: false, teamId: "team-b" },
-      { id: "u-staff-4", name: "한지우", role: "staff", isFinancialViewer: false, teamId: "team-c" },
-      {
-        id: "u-leader-1",
+  const workOrders = buildSeedWorkOrders(contracts, partners);
+  const users = [
+    ...buildStaffUsers(),
+    {
+      id: "u-leader-1",
         name: "박준호",
         role: "team_leader",
         isFinancialViewer: false,
@@ -1050,7 +984,9 @@ export function createSeedData(): AppData {
         isFinancialViewer: false,
         partnerId: "p-inf-1",
       },
-    ],
+    ] satisfies User[];
+  const partialData = {
+    users,
     teams: [
       { id: "team-a", name: "마케팅 1팀", leaderId: "u-leader-1", executiveId: "u-exec-1" },
       { id: "team-b", name: "마케팅 2팀", leaderId: "u-leader-2", executiveId: "u-exec-1" },
@@ -1059,62 +995,201 @@ export function createSeedData(): AppData {
     contracts,
     executions,
     expenses,
-    extensionApprovals: [
-      {
-        id: "ext-1",
-        contractId: "c-3",
-        requestedBy: "u-staff-1",
-        status: "pending",
-        createdAt: addDays(DEMO_TODAY, -6),
-      },
-      {
-        id: "ext-2",
-        contractId: "c-4",
-        requestedBy: "u-staff-2",
-        status: "pending",
-        createdAt: addDays(DEMO_TODAY, -4),
-      },
-      {
-        id: "ext-3",
-        contractId: "c-11",
-        requestedBy: "u-staff-3",
-        status: "pending",
-        createdAt: addDays(DEMO_TODAY, -2),
-      },
-      {
-        id: "ext-4",
-        contractId: "c-6",
-        requestedBy: "u-staff-1",
-        status: "approved",
-        createdAt: addDays(MONTH_START, 8),
-      },
-      {
-        id: "ext-5",
-        contractId: "c-18",
-        requestedBy: "u-staff-4",
-        status: "rejected",
-        createdAt: addDays(MONTH_START, 12),
-      },
-    ],
+    workOrders,
+  };
+
+  const dataWithConfig: AppData = {
+    ...partialData,
+    extensionApprovals: buildScaledExtensionApprovals(
+      contracts,
+      DEMO_TODAY,
+      MONTH_START,
+    ),
     bonusPayments: buildBonusPayments(contracts, bonusPolicy),
     bonusPolicy,
     fundBudget: {
-      monthlyBudget: 120_000_000,
-      expenseAllocated: 45_000_000,
-      bonusAllocated: 8_500_000,
-      operatingReserve: 66_500_000,
+      monthlyBudget: 120_000_000 * SEED_SCALE,
+      expenseAllocated: 45_000_000 * SEED_SCALE,
+      bonusAllocated: 8_500_000 * SEED_SCALE,
+      operatingReserve: 66_500_000 * SEED_SCALE,
     },
     contractRecords,
     contractMemos,
     partners,
-    workOrders,
     accountProfiles: buildAccountProfiles(),
     taskChannels: [...DEFAULT_TASK_CHANNELS],
     expenseCategories: [...DEFAULT_EXPENSE_CATEGORIES],
+    partnerFilterDefinitions: [...DEFAULT_PARTNER_FILTERS],
+    experienceFieldDefinitions: [...DEFAULT_EXPERIENCE_FIELDS],
     partnerReferralLeads,
+    experienceCampaigns: [
+      ...buildDetailedExperienceCampaigns(),
+      ...buildScaledExperienceCampaigns(
+        contracts,
+        MONTH_START,
+        DEMO_TODAY,
+      ).filter((campaign) => campaign.contractId !== "c-3"),
+    ],
     postLinkOpinions: buildPostLinkOpinions(),
+    workEvaluations: [],
     ...buildPlaceQaDemo(),
   };
+
+  return {
+    ...dataWithConfig,
+    workEvaluations: buildWorkEvaluations(dataWithConfig),
+  };
+}
+
+function buildWorkEvaluations(data: AppData): WorkEvaluation[] {
+  const period = currentEvaluationPeriod(DEMO_TODAY);
+  const samples: Array<{
+    evaluatorId: string;
+    evaluateeId: string;
+    comment: string;
+  }> = [
+    {
+      evaluatorId: "u-leader-1",
+      evaluateeId: "u-staff-1",
+      comment: "Q&A 대응 빠름 · 포스팅 품질 우수",
+    },
+    {
+      evaluatorId: "u-leader-1",
+      evaluateeId: "u-staff-2",
+      comment: "체험단 일정 조율 안정적",
+    },
+    {
+      evaluatorId: "u-exec-1",
+      evaluateeId: "u-leader-1",
+      comment: "팀 실행률 · 연장 전환 관리 우수",
+    },
+  ];
+
+  return samples.map((sample, index) => {
+    const evaluatee = data.users.find((user) => user.id === sample.evaluateeId)!;
+    const metrics = computeEvaluationMetrics(data, evaluatee);
+    const scores = computeAutoEvaluationScores(data, evaluatee, metrics);
+    return {
+      id: `wev-seed-${index + 1}`,
+      ...buildWorkEvaluationInput({
+        period,
+        evaluatorId: sample.evaluatorId,
+        evaluateeId: sample.evaluateeId,
+        scores,
+        metrics,
+        comment: sample.comment,
+      }),
+    };
+  });
+}
+
+function buildDetailedExperienceCampaigns(): ExperienceCampaign[] {
+  const visitDate = addDays(MONTH_START, 12);
+  return [
+    {
+      id: "exc-c3-1",
+      contractId: "c-3",
+      workOrderId: "wo-c-3-experience-1",
+      title: "1차 체험단",
+      sequence: 1,
+      criteria: {
+        targetHeadcount: 10,
+        category: "맛집",
+        requirements: "네이버 블로그 리뷰 · 사진 10장 이상 · 인스타 스토리",
+        providedBenefit: "2인 코스 제공 + 주차 지원",
+        notes: "평일 오후 선호",
+      },
+      schedulingStatus: "recruiting",
+      proposals: [
+        {
+          id: "esp-1",
+          proposedByUserId: "u-staff-3",
+          visitDate,
+          visitTime: "14:00",
+          visitEndTime: "17:00",
+          note: "1차 체험일 제안",
+          createdAt: addDays(MONTH_START, 2),
+          status: "accepted",
+        },
+      ],
+      confirmedVisitDate: visitDate,
+      confirmedVisitTime: "14:00",
+      confirmedVisitEndTime: "17:00",
+      participants: [
+        {
+          id: "exp-1",
+          blogName: "맛집탐험가_kim",
+          name: "김체험",
+          contact: "010-1111-2222",
+          experienceDate: visitDate,
+          headcount: 2,
+          memo: "평일 오후 가능",
+          postUrl: "https://blog.naver.com/foodie_kim/review-1",
+          postRegisteredAt: addDays(MONTH_START, 14),
+          snsHandle: "foodie_kim",
+          registeredAt: addDays(MONTH_START, 5),
+          registeredByUserId: "u-staff-3",
+        },
+        {
+          id: "exp-2",
+          blogName: "review_lee",
+          name: "이리뷰",
+          experienceDate: visitDate,
+          headcount: 1,
+          memo: "인스타 스토리 예정",
+          registeredAt: addDays(MONTH_START, 6),
+          registeredByUserId: "u-staff-3",
+        },
+        {
+          id: "exp-3",
+          blogName: "박블로그일상",
+          name: "박블로그",
+          contact: "010-3333-4444",
+          experienceDate: visitDate,
+          headcount: 1,
+          registeredAt: addDays(MONTH_START, 7),
+          registeredByUserId: "u-leader-1",
+        },
+      ],
+      sentToClientAt: addDays(MONTH_START, 1),
+      confirmedAt: addDays(MONTH_START, 4),
+      confirmedByUserId: "u-client-1",
+      createdByUserId: "u-staff-3",
+      createdAt: addDays(MONTH_START, 1),
+      updatedAt: addDays(MONTH_START, 7),
+    },
+    {
+      id: "exc-c3-2",
+      contractId: "c-3",
+      title: "2차 체험단",
+      sequence: 2,
+      criteria: {
+        targetHeadcount: 8,
+        category: "맛집",
+        requirements: "릴스 1개 + 블로그",
+        providedBenefit: "점심 코스",
+        notes: "주말 가능자 우대",
+      },
+      schedulingStatus: "coordinating",
+      proposals: [
+        {
+          id: "esp-2",
+          proposedByUserId: "u-staff-3",
+          visitDate: addDays(MONTH_START, 20),
+          visitTime: "11:00",
+          visitEndTime: "14:00",
+          note: "2차 후보일",
+          createdAt: addDays(MONTH_START, 8),
+          status: "pending",
+        },
+      ],
+      participants: [],
+      sentToClientAt: addDays(MONTH_START, 8),
+      createdByUserId: "u-staff-3",
+      createdAt: addDays(MONTH_START, 8),
+      updatedAt: addDays(MONTH_START, 8),
+    },
+  ];
 }
 
 function buildPostLinkOpinions(): PostLinkOpinion[] {

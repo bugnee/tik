@@ -17,7 +17,10 @@ import {
 } from "@/components/ui/DataTable";
 import { Checkbox, Input, Select } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
-import { PARTNER_CATEGORY_LABELS } from "@/lib/partner-utils";
+import { PartnerFilterBadge } from "@/components/ui/PartnerFilterBadge";
+import {
+  getPartnerFilterSelectOptions,
+} from "@/lib/partner-filter-utils";
 import {
   createTaskChannelInput,
   getSortedTaskChannels,
@@ -57,11 +60,17 @@ export function TaskChannelsSettings() {
   const {
     taskChannels,
     expenseCategories,
+    partnerFilterDefinitions,
     workOrders,
     addTaskChannel,
     updateTaskChannel,
     deleteTaskChannel,
   } = data;
+
+  const partnerFilterOptions = useMemo(
+    () => getPartnerFilterSelectOptions(partnerFilterDefinitions, false),
+    [partnerFilterDefinitions],
+  );
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<TaskChannelDefinition | null>(null);
@@ -179,10 +188,16 @@ export function TaskChannelsSettings() {
                     </Badge>
                   )}
                 </Td>
-                <Td className="text-xs text-zinc-500">
-                  {channel.partnerCategory
-                    ? PARTNER_CATEGORY_LABELS[channel.partnerCategory]
-                    : "-"}
+                <Td>
+                  {channel.partnerCategory ? (
+                    <PartnerFilterBadge
+                      filters={partnerFilterDefinitions}
+                      taskChannels={taskChannels}
+                      categoryId={channel.partnerCategory}
+                    />
+                  ) : (
+                    <span className="text-xs text-zinc-500">-</span>
+                  )}
                 </Td>
                 <Td className="font-mono text-zinc-400">{channel.sortOrder}</Td>
                 <Td>
@@ -261,13 +276,14 @@ export function TaskChannelsSettings() {
                 }
                 disabled={editing?.isSystem}
               >
-                {(Object.keys(PARTNER_CATEGORY_LABELS) as PartnerCategory[]).map(
-                  (k) => (
-                    <option key={k} value={k}>
-                      {PARTNER_CATEGORY_LABELS[k]}
-                    </option>
-                  ),
-                )}
+                {(partnerFilterOptions.length
+                  ? partnerFilterOptions
+                  : [{ value: "blog", label: "블로그" }]
+                ).map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </Select>
             </div>
             <Input

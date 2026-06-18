@@ -1,24 +1,126 @@
 @import "tailwindcss";
 
+/* ── Light (낮) ── readable text on light surfaces */
 :root {
+  color-scheme: light;
+  --background: #f4f4f5;
+  --foreground: #0f172a;
+  --foreground-secondary: #334155;
+  --card: #ffffff;
+  --card-muted: #fafafa;
+  --border: #e2e8f0;
+  --muted: #475569;
+  --nav-bg: rgba(255, 255, 255, 0.92);
+  --accent: #059669;
+  --accent-muted: #05966918;
+  --mobile-nav-height: 3.75rem;
+
+  /* Inverted zinc: light text tokens → dark ink, dark bg tokens → light surfaces */
+  --tone-50: #0f172a;
+  --tone-100: #1e293b;
+  --tone-200: #334155;
+  --tone-300: #475569;
+  --tone-400: #64748b;
+  --tone-500: #475569;
+  --tone-600: #64748b;
+  --tone-700: #cbd5e1;
+  --tone-800: #e2e8f0;
+  --tone-900: #f1f5f9;
+  --tone-950: #ffffff;
+
+  --accent-emerald-300: #047857;
+  --accent-emerald-400: #059669;
+  --accent-cyan-300: #0e7490;
+  --accent-cyan-400: #0891b2;
+  --accent-amber-300: #b45309;
+  --accent-amber-400: #d97706;
+  --accent-rose-300: #be123c;
+  --accent-rose-400: #e11d48;
+  --accent-violet-300: #6d28d9;
+  --accent-violet-400: #7c3aed;
+  --accent-sky-300: #0369a1;
+  --accent-sky-400: #0284c7;
+  --accent-fuchsia-300: #a21caf;
+  --accent-fuchsia-400: #c026d3;
+}
+
+html.dark {
+  color-scheme: dark;
   --background: #09090b;
   --foreground: #fafafa;
+  --foreground-secondary: #e4e4e7;
   --card: #18181b;
+  --card-muted: rgba(24, 24, 27, 0.6);
   --border: #27272a;
+  --muted: #a1a1aa;
+  --nav-bg: rgba(9, 9, 11, 0.82);
   --accent: #10b981;
   --accent-muted: #10b98120;
-  --mobile-nav-height: 3.75rem;
+
+  --tone-50: #fafafa;
+  --tone-100: #f4f4f5;
+  --tone-200: #e4e4e7;
+  --tone-300: #d4d4d8;
+  --tone-400: #a1a1aa;
+  --tone-500: #71717a;
+  --tone-600: #52525b;
+  --tone-700: #3f3f46;
+  --tone-800: #27272a;
+  --tone-900: #18181b;
+  --tone-950: #09090b;
+
+  --accent-emerald-300: #6ee7b7;
+  --accent-emerald-400: #34d399;
+  --accent-cyan-300: #67e8f9;
+  --accent-cyan-400: #22d3ee;
+  --accent-amber-300: #fcd34d;
+  --accent-amber-400: #fbbf24;
+  --accent-rose-300: #fda4af;
+  --accent-rose-400: #fb7185;
+  --accent-violet-300: #c4b5fd;
+  --accent-violet-400: #a78bfa;
+  --accent-sky-300: #7dd3fc;
+  --accent-sky-400: #38bdf8;
+  --accent-fuchsia-300: #f0abfc;
+  --accent-fuchsia-400: #e879f9;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  --color-zinc-50: var(--tone-50);
+  --color-zinc-100: var(--tone-100);
+  --color-zinc-200: var(--tone-200);
+  --color-zinc-300: var(--tone-300);
+  --color-zinc-400: var(--tone-400);
+  --color-zinc-500: var(--tone-500);
+  --color-zinc-600: var(--tone-600);
+  --color-zinc-700: var(--tone-700);
+  --color-zinc-800: var(--tone-800);
+  --color-zinc-900: var(--tone-900);
+  --color-zinc-950: var(--tone-950);
+
+  --color-emerald-300: var(--accent-emerald-300);
+  --color-emerald-400: var(--accent-emerald-400);
+  --color-cyan-300: var(--accent-cyan-300);
+  --color-cyan-400: var(--accent-cyan-400);
+  --color-amber-300: var(--accent-amber-300);
+  --color-amber-400: var(--accent-amber-400);
+  --color-rose-300: var(--accent-rose-300);
+  --color-rose-400: var(--accent-rose-400);
+  --color-violet-300: var(--accent-violet-300);
+  --color-violet-400: var(--accent-violet-400);
+  --color-sky-300: var(--accent-sky-300);
+  --color-sky-400: var(--accent-sky-400);
+  --color-fuchsia-300: var(--accent-fuchsia-300);
+  --color-fuchsia-400: var(--accent-fuchsia-400);
+
   --font-sans: var(--font-pretendard), var(--font-geist-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 html {
-  color-scheme: dark;
   -webkit-text-size-adjust: 100%;
 }
 
@@ -27,6 +129,9 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   overflow-x: hidden;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 /* iOS 노치·홈 인디케이터 대응 */
@@ -38,14 +143,12 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* 터치 디바이스 최소 탭 영역 */
 @media (hover: none) and (pointer: coarse) {
   .touch-manipulation {
     touch-action: manipulation;
   }
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -54,14 +157,13 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: var(--tone-700);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: var(--tone-600);
 }
 
-/* Recharts tooltip fix */
 .recharts-default-tooltip {
   border-radius: 12px !important;
 }

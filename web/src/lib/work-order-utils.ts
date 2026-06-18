@@ -261,7 +261,7 @@ export function buildExpenseDescription(
 
 const COMPLETED_STAGES: WorkOrderStage[] = ["order_ready", "paid"];
 
-const STAGE_PROGRESS_WEIGHT: Record<WorkOrderStage, number> = {
+export const STAGE_PROGRESS_WEIGHT: Record<WorkOrderStage, number> = {
   draft: 0,
   rejected: 8,
   pending_approval: 25,

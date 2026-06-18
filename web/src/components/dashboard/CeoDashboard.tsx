@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { DashboardHeader } from "@/components/dashboard/StaffDashboard";
+import { DashboardBonusSection } from "@/components/dashboard/DashboardBonusSection";
 import {
   BonusApprovalPanel,
   BonusStatusSummary,
@@ -65,7 +66,6 @@ export function CeoDashboard() {
       <DashboardHeader
         title="대표 대시보드"
         description={`전사 ${totalClients}개 업체 · 캐시플로우 · 조직도 실적 모니터링`}
-        action={<BonusStatusSummary />}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -79,7 +79,7 @@ export function CeoDashboard() {
         <StatCard
           label="순이익 (P&L)"
           value={formatKRW(pl.netProfit)}
-          subValue="성과급 · 소개비 · 파트너비 · 전체 비용 차감 후"
+          subValue="비용 · 소개비 · 파트너비 차감 후"
           icon={Wallet}
           accent="cyan"
         />
@@ -104,7 +104,7 @@ export function CeoDashboard() {
         />
       </div>
 
-      <PlaceQaDashboardPanel title="전사 · 플레이스 문의 현황" />
+      <PlaceQaDashboardPanel title="전사 · 고객사 Q&A" />
 
       <ContractBriefListModal
         open={listModal === "extension"}
@@ -198,9 +198,7 @@ export function CeoDashboard() {
         </Card>
       </div>
 
-      <BonusPolicyPanel />
       <ExpensePayoutApprovalPanel />
-      <BonusApprovalPanel role="ceo" />
 
       <Card>
         <CardHeader title="전사 업체 목록" subtitle={`총 ${totalClients}개`} />
@@ -247,6 +245,12 @@ export function CeoDashboard() {
           </table>
         </div>
       </Card>
+
+      <DashboardBonusSection>
+        <BonusStatusSummary />
+        <BonusPolicyPanel />
+        <BonusApprovalPanel role="ceo" />
+      </DashboardBonusSection>
     </div>
   );
 }
