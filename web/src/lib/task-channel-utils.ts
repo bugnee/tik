@@ -52,9 +52,23 @@ const DEFAULT_CHANNEL_ACCENTS: Record<string, TaskChannelAccent> = {
   influencer: "violet",
   experience: "amber",
   insta_card: "fuchsia",
+  youtube: "rose",
+  instagram: "orange",
+  clip: "lime",
+  tiktok: "emerald",
   press: "sky",
   referral: "rose",
 };
+
+/** SNS·숏폼 집행 채널 — 인플루언서 유형으로 매핑 (파트너 분야는 채널별 ID) */
+const SOCIAL_INFLUENCER_CHANNEL_IDS = new Set([
+  "influencer",
+  "insta_card",
+  "instagram",
+  "youtube",
+  "clip",
+  "tiktok",
+]);
 
 const DEFAULT_EXECUTION_ACCENTS: Record<ExecutionType, TaskChannelAccent> = {
   optimized: "cyan",
@@ -119,9 +133,65 @@ export const DEFAULT_TASK_CHANNELS: TaskChannelDefinition[] = [
     syncExecution: true,
   },
   {
+    id: "youtube",
+    label: "유튜브",
+    sortOrder: 5,
+    isActive: true,
+    kind: "contract_target",
+    accentColor: "rose",
+    contractTargetField: "targetYoutube",
+    contractDoneField: "youtubeDone",
+    executionType: "influencer",
+    partnerCategory: "youtube",
+    expenseCategory: "youtube",
+    syncExecution: true,
+  },
+  {
+    id: "instagram",
+    label: "인스타",
+    sortOrder: 6,
+    isActive: true,
+    kind: "contract_target",
+    accentColor: "orange",
+    contractTargetField: "targetInstagram",
+    contractDoneField: "instagramDone",
+    executionType: "influencer",
+    partnerCategory: "instagram",
+    expenseCategory: "instagram",
+    syncExecution: true,
+  },
+  {
+    id: "clip",
+    label: "클립",
+    sortOrder: 7,
+    isActive: true,
+    kind: "contract_target",
+    accentColor: "lime",
+    contractTargetField: "targetClip",
+    contractDoneField: "clipDone",
+    executionType: "influencer",
+    partnerCategory: "clip",
+    expenseCategory: "clip",
+    syncExecution: true,
+  },
+  {
+    id: "tiktok",
+    label: "틱톡",
+    sortOrder: 8,
+    isActive: true,
+    kind: "contract_target",
+    accentColor: "emerald",
+    contractTargetField: "targetTiktok",
+    contractDoneField: "tiktokDone",
+    executionType: "influencer",
+    partnerCategory: "tiktok",
+    expenseCategory: "tiktok",
+    syncExecution: true,
+  },
+  {
     id: "press",
     label: "기자단",
-    sortOrder: 5,
+    sortOrder: 9,
     isActive: true,
     kind: "execution_only",
     accentColor: "sky",
@@ -332,8 +402,23 @@ export function shouldShowContractTargetRow(
   contract: Contract,
   channel: TaskChannelDefinition,
 ): boolean {
-  if (channel.contractDoneField) return true;
+  if (channel.contractDoneField) {
+    return (
+      getContractTargetCount(contract, channel) > 0 ||
+      getContractDoneCount(contract, channel) > 0
+    );
+  }
   return getContractTargetCount(contract, channel) > 0;
+}
+
+/** 계약 화면·KPI에 표시할 집행 채널 */
+export function getContractVisibleTargetChannels(
+  contract: Contract,
+  channels: TaskChannelDefinition[],
+): TaskChannelDefinition[] {
+  return getContractTargetChannels(channels).filter((c) =>
+    shouldShowContractTargetRow(contract, c),
+  );
 }
 
 export function getContractTargetCount(
@@ -374,7 +459,7 @@ export function taskChannelToPartnerCategory(
   if (channel?.partnerCategory) return channel.partnerCategory;
   if (taskType === "referral") return "referral";
   if (taskType === "blog") return "blog";
-  if (taskType === "influencer" || taskType === "insta_card") return "influencer";
+  if (SOCIAL_INFLUENCER_CHANNEL_IDS.has(taskType)) return "influencer";
   if (taskType === "experience") return "experience";
   return "press";
 }
@@ -386,8 +471,7 @@ export function taskChannelToExecutionType(
   const channel = channels.find((c) => c.id === taskType);
   if (channel?.executionType) return channel.executionType;
   if (taskType === "blog") return "optimized";
-  if (taskType === "insta_card") return "influencer";
-  if (taskType === "influencer") return "influencer";
+  if (SOCIAL_INFLUENCER_CHANNEL_IDS.has(taskType)) return "influencer";
   if (taskType === "experience") return "experience";
   return "press";
 }
@@ -400,7 +484,11 @@ export function taskChannelToExpenseCategory(
   if (channel?.expenseCategory) return channel.expenseCategory;
   if (taskType === "referral") return "other";
   if (taskType === "blog") return "other";
-  if (taskType === "influencer" || taskType === "insta_card") return "influencer";
+  if (taskType === "youtube") return "youtube";
+  if (taskType === "instagram") return "instagram";
+  if (taskType === "clip") return "clip";
+  if (taskType === "tiktok") return "tiktok";
+  if (SOCIAL_INFLUENCER_CHANNEL_IDS.has(taskType)) return "influencer";
   if (taskType === "experience") return "experience";
   return "press";
 }

@@ -31,6 +31,10 @@ export interface Contract {
   targetInfluencer: number;
   targetExperience: number;
   targetInstaCard: number;
+  targetYoutube: number;
+  targetInstagram: number;
+  targetClip: number;
+  targetTiktok: number;
   hasPlaceSetting: boolean;
   isExtension: boolean;
   hasReferralPromo: boolean;
@@ -40,6 +44,10 @@ export interface Contract {
   teamId: string;
   optimizedDone: number;
   influencerDone: number;
+  youtubeDone: number;
+  instagramDone: number;
+  clipDone: number;
+  tiktokDone: number;
   contractStartDate: string;
   contractEndDate: string;
   status: ContractStatus;

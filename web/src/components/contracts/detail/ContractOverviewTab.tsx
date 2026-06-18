@@ -28,6 +28,7 @@ import type { AppData, ClientLinksInput, Contract, Execution } from "@/lib/types
 import { CONTRACT_STATUS_LABELS, EXECUTION_STATUS_LABELS } from "@/lib/types";
 import {
   getContractChannelProgress,
+  formatContractTargetSummary,
   TASK_CHANNEL_BADGE_CLASSES,
 } from "@/lib/task-channel-utils";
 import type { TaskChannelDefinition } from "@/lib/types";
@@ -49,6 +50,7 @@ export function ContractOverviewTab({
   scheduledBonusClosingDate,
   completionRate,
   progressChannels,
+  targetChannels,
   activity,
   executions,
   selectedExecutionId,
@@ -72,6 +74,7 @@ export function ContractOverviewTab({
   scheduledBonusClosingDate?: string;
   completionRate: number;
   progressChannels: TaskChannelDefinition[];
+  targetChannels: TaskChannelDefinition[];
   activity: ActivityItem[];
   executions: Execution[];
   selectedExecutionId: string | null;
@@ -326,6 +329,26 @@ export function ContractOverviewTab({
                 />
               )}
             </dl>
+            {targetChannels.length > 0 && (
+              <div className="mt-4 border-t border-zinc-800 pt-4">
+                <p className="mb-2 text-xs font-medium text-zinc-500">
+                  집행 채널 · 월 목표
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {targetChannels.map((channel) => (
+                    <div
+                      key={channel.id}
+                      className="flex items-center gap-1.5 rounded-lg border border-zinc-800/80 bg-zinc-950/40 px-2.5 py-1.5"
+                    >
+                      <TaskChannelBadge data={data} taskType={channel.id} />
+                      <span className="text-xs font-medium text-zinc-300">
+                        {formatContractTargetSummary(contract, channel)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </Card>
 
           <ClientLinksPanel

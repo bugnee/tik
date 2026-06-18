@@ -238,6 +238,31 @@ export function buildSampleContracts(
       scenario.targetInfluencer,
     );
 
+    const targetYoutube = 2 + (scenario.index % 4);
+    const targetInstagram = 3 + (scenario.index % 5);
+    const targetClip = 1 + (scenario.index % 3);
+    const targetTiktok = 1 + (scenario.index % 2);
+    const ytProgress = resolveExecutionProgress(
+      scenario.index + 2,
+      "influencer",
+      targetYoutube,
+    );
+    const igProgress = resolveExecutionProgress(
+      scenario.index + 3,
+      "influencer",
+      targetInstagram,
+    );
+    const clipProgress = resolveExecutionProgress(
+      scenario.index + 4,
+      "influencer",
+      targetClip,
+    );
+    const tiktokProgress = resolveExecutionProgress(
+      scenario.index + 5,
+      "influencer",
+      targetTiktok,
+    );
+
     const contractEndDate =
       typeof scenario.contractEndDate === "function"
         ? scenario.contractEndDate(demoToday, monthEnd)
@@ -262,6 +287,10 @@ export function buildSampleContracts(
       targetInfluencer: scenario.targetInfluencer,
       targetExperience: scenario.targetExperience,
       targetInstaCard: scenario.targetInstaCard,
+      targetYoutube,
+      targetInstagram,
+      targetClip,
+      targetTiktok,
       hasPlaceSetting: scenario.hasPlaceSetting,
       isExtension: scenario.isExtension,
       hasReferralPromo: scenario.hasReferralPromo,
@@ -272,6 +301,10 @@ export function buildSampleContracts(
       teamId,
       optimizedDone: optProgress.completedCount,
       influencerDone: infProgress.completedCount,
+      youtubeDone: ytProgress.completedCount,
+      instagramDone: igProgress.completedCount,
+      clipDone: clipProgress.completedCount,
+      tiktokDone: tiktokProgress.completedCount,
       contractStartDate: addMonthsIsoFn(
         demoToday,
         -scenario.contractStartMonthsAgo,

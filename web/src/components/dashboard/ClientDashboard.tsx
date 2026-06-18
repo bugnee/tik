@@ -33,7 +33,7 @@ import { ClientRenewalPanel } from "@/components/client-portal/ClientRenewalPane
 import { ClientDepositRequestPanel } from "@/components/client-portal/ClientDepositRequestPanel";
 import { LocationProfilePanel } from "@/components/location/LocationProfilePanel";
 import { ClientLinksPanel } from "@/components/contracts/ClientLinksPanel";
-import { ClientExperienceHistoryPanel } from "@/components/client-portal/ClientExperienceHistoryPanel";
+import { ClientChannelActivityPanel } from "@/components/client-portal/ClientChannelActivityPanel";
 import { ClientContractFocusPanel } from "@/components/client-portal/ClientContractFocusPanel";
 import { ClientContractFocusSection } from "@/components/client-portal/ClientContractFocusSection";
 import { ClientPortalFocusBadge } from "@/components/client-portal/ClientPortalFocusBadge";
@@ -90,6 +90,7 @@ import {
   getContractDoneCount,
   getContractTargetChannels,
   getContractTargetCount,
+  getContractVisibleTargetChannels,
   getExecutionTypeAccent,
   getTaskChannelAccent,
   getWorkOrderTaskLabel,
@@ -190,8 +191,11 @@ export function ClientDashboard({
   );
 
   const completionChannels = useMemo(
-    () => targetChannels.filter((c) => c.contractDoneField),
-    [targetChannels],
+    () =>
+      contract
+        ? getContractVisibleTargetChannels(contract, data.taskChannels)
+        : [],
+    [contract, data.taskChannels],
   );
 
   const contractCampaigns = useMemo(
@@ -601,8 +605,8 @@ export function ClientDashboard({
         </div>
       )}
 
-      {view === "experience" && (
-        <ClientExperienceHistoryPanel
+      {view === "experience" && contract && (
+        <ClientChannelActivityPanel
           contractId={contract.id}
           readOnly={previewMode}
           highlightAnchorIds={highlightAnchorIds}

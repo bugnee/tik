@@ -64,7 +64,7 @@ import {
   getTeamName,
   getUserName,
 } from "@/lib/selectors";
-import { getContractTargetChannels } from "@/lib/task-channel-utils";
+import { getContractTargetChannels, getContractVisibleTargetChannels } from "@/lib/task-channel-utils";
 import type {
   ContractInput,
   Execution,
@@ -142,8 +142,11 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
     [data.taskChannels],
   );
   const progressChannels = useMemo(
-    () => targetChannels.filter((c) => c.contractDoneField),
-    [targetChannels],
+    () =>
+      contract
+        ? getContractVisibleTargetChannels(contract, data.taskChannels)
+        : [],
+    [contract, data.taskChannels],
   );
 
   if (!contract) {
@@ -543,6 +546,7 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
           scheduledBonusClosingDate={scheduledBonusClosingDate}
           completionRate={completionRate}
           progressChannels={progressChannels}
+          targetChannels={targetChannels}
           activity={activity}
           executions={executions}
           selectedExecutionId={selectedExecutionId}

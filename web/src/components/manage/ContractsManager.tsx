@@ -140,6 +140,10 @@ const emptyForm = (): ContractInput => ({
   targetInfluencer: 4,
   targetExperience: 0,
   targetInstaCard: 0,
+  targetYoutube: 0,
+  targetInstagram: 0,
+  targetClip: 0,
+  targetTiktok: 0,
   hasPlaceSetting: false,
   isExtension: false,
   hasReferralPromo: false,
@@ -147,6 +151,10 @@ const emptyForm = (): ContractInput => ({
   teamId: "",
   optimizedDone: 0,
   influencerDone: 0,
+  youtubeDone: 0,
+  instagramDone: 0,
+  clipDone: 0,
+  tiktokDone: 0,
   contractStartDate: new Date().toISOString().slice(0, 10),
   contractEndDate: new Date(new Date().setMonth(new Date().getMonth() + 1))
     .toISOString()

@@ -122,6 +122,10 @@ const TASK_CHANNEL_GLOSSARY_TERM: Record<string, string> = {
   influencer: "인플",
   experience: "체험단",
   insta_card: "카드뉴스",
+  youtube: "유튜브",
+  instagram: "인스타",
+  clip: "클립",
+  tiktok: "틱톡",
 };
 
 const EXECUTION_TYPE_GLOSSARY_TERM: Record<string, string> = {

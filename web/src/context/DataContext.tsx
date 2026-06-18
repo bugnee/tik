@@ -386,10 +386,19 @@ function normalizeExecution(execution: Execution): Execution {
 
 function normalizeContract(contract: Contract): Contract {
   const start = contract.contractStartDate ?? DEFAULT_CONTRACT_START;
+  const channelTargets = contract.channelTargets;
   return {
     ...contract,
     targetExperience: contract.targetExperience ?? 0,
     targetInstaCard: contract.targetInstaCard ?? 0,
+    targetYoutube: contract.targetYoutube ?? channelTargets?.youtube ?? 0,
+    targetInstagram: contract.targetInstagram ?? channelTargets?.instagram ?? 0,
+    targetClip: contract.targetClip ?? channelTargets?.clip ?? 0,
+    targetTiktok: contract.targetTiktok ?? channelTargets?.tiktok ?? 0,
+    youtubeDone: contract.youtubeDone ?? 0,
+    instagramDone: contract.instagramDone ?? 0,
+    clipDone: contract.clipDone ?? 0,
+    tiktokDone: contract.tiktokDone ?? 0,
     hasPlaceSetting: contract.hasPlaceSetting ?? false,
     contractStartDate: start,
     contractEndDate: contract.contractEndDate ?? DEFAULT_CONTRACT_END,

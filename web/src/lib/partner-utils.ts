@@ -80,6 +80,10 @@ export const PARTNER_CATEGORY_LABELS: Record<string, string> = {
   experience: "체험단",
   influencer: "인플루언서",
   blog: "블로그",
+  youtube: "유튜브",
+  instagram: "인스타",
+  clip: "클립",
+  tiktok: "틱톡",
   referral: "리셀러",
 };
 
@@ -88,6 +92,10 @@ export const PARTNER_CATEGORIES: PartnerCategory[] = [
   "experience",
   "influencer",
   "blog",
+  "youtube",
+  "instagram",
+  "clip",
+  "tiktok",
   "referral",
 ];
 
@@ -127,6 +135,14 @@ export function expenseCategoryToPartnerCategory(
       return "experience";
     case "influencer":
       return "influencer";
+    case "youtube":
+      return "youtube";
+    case "instagram":
+      return "instagram";
+    case "clip":
+      return "clip";
+    case "tiktok":
+      return "tiktok";
     case "other":
       return "blog";
     case "expense":

@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { ArrowLeft } from "lucide-react";
 import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
-import { ExperienceRegistryPanel } from "@/components/experience/ExperienceRegistryPanel";
+import { ActivityRegistryPanel } from "@/components/experience/ActivityRegistryPanel";
 import { PageHeader } from "@/components/ui/DataTable";
 import type { UserRole } from "@/lib/types";
 
@@ -34,8 +34,8 @@ export function ExperiencePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="체험단"
-        description="전체 고객사 체험단 · 파트너 · 전화번호 · 일정 조회"
+        title="활동"
+        description="전체 고객사 활동 · 체험단·업무·집행·Q&A · 일정 조회"
         action={
           <Link
             href="/dashboard"
@@ -47,7 +47,7 @@ export function ExperiencePage() {
         }
       />
 
-      <ExperienceRegistryPanel contractIds={contractIds} />
+      <ActivityRegistryPanel contractIds={contractIds} mode="staff" />
     </div>
   );
 }

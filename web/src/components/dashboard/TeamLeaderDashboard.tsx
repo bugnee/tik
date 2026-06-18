@@ -63,6 +63,7 @@ import {
 import {
   formatContractTargetSummary,
   getContractTargetChannels,
+  getContractVisibleTargetChannels,
 } from "@/lib/task-channel-utils";
 
 type TeamLeaderListModal =
@@ -186,8 +187,9 @@ export function TeamLeaderDashboard() {
             <div className="space-y-3">
               {myWorkContracts.map((c) => {
                 const rate = getCompletionRate(data, c);
-                const summaryChannels = targetChannels.filter(
-                  (channel) => channel.contractDoneField,
+                const summaryChannels = getContractVisibleTargetChannels(
+                  c,
+                  data.taskChannels,
                 );
                 return (
                   <Link

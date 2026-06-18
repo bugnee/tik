@@ -35,8 +35,18 @@ export interface TaskChannelDefinition {
     | "targetOptimized"
     | "targetInfluencer"
     | "targetExperience"
-    | "targetInstaCard";
-  contractDoneField?: "optimizedDone" | "influencerDone";
+    | "targetInstaCard"
+    | "targetYoutube"
+    | "targetInstagram"
+    | "targetClip"
+    | "targetTiktok";
+  contractDoneField?:
+    | "optimizedDone"
+    | "influencerDone"
+    | "youtubeDone"
+    | "instagramDone"
+    | "clipDone"
+    | "tiktokDone";
   executionType?: ExecutionType;
   partnerCategory?: PartnerCategory;
   expenseCategory?: ExpenseCategory;

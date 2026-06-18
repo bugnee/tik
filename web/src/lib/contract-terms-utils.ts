@@ -157,6 +157,10 @@ export type ContractTermsFormValues = Pick<
   | "targetInfluencer"
   | "targetExperience"
   | "targetInstaCard"
+  | "targetYoutube"
+  | "targetInstagram"
+  | "targetClip"
+  | "targetTiktok"
   | "channelTargets"
   | "isExtension"
   | "hasReferralPromo"
@@ -175,6 +179,10 @@ export function contractToTermsForm(contract: Contract): ContractTermsFormValues
     targetInfluencer: contract.targetInfluencer,
     targetExperience: contract.targetExperience,
     targetInstaCard: contract.targetInstaCard,
+    targetYoutube: contract.targetYoutube ?? 0,
+    targetInstagram: contract.targetInstagram ?? 0,
+    targetClip: contract.targetClip ?? 0,
+    targetTiktok: contract.targetTiktok ?? 0,
     channelTargets: contract.channelTargets,
     isExtension: contract.isExtension,
     hasReferralPromo: contract.hasReferralPromo,

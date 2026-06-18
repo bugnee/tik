@@ -33,7 +33,7 @@ export interface NavItem {
   hideForPartnerRole?: boolean;
   /** 고객사·파트너·대표 화면에서 숨김 */
   internalEvaluationOnly?: boolean;
-  /** 내부 직원 체험단 대장 메뉴 */
+  /** 내부 직원 활동 대장 메뉴 */
   experienceOnly?: boolean;
 }
 
@@ -74,8 +74,8 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/experience",
-    label: "체험단",
-    shortLabel: "체험단",
+    label: "활동",
+    shortLabel: "활동",
     icon: Sparkles,
     experienceOnly: true,
     hideForPartnerRole: true,
@@ -163,8 +163,8 @@ export function getNavItemsForRole(
       },
       {
         href: "/dashboard?view=experience",
-        label: "체험단",
-        shortLabel: "체험단",
+        label: "활동",
+        shortLabel: "활동",
         icon: Sparkles,
       },
       {

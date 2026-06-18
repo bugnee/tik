@@ -50,8 +50,8 @@ export const CLIENT_PORTAL_VIEWS: {
   { id: "schedule", label: "일정", shortLabel: "일정", accent: "amber" },
   {
     id: "experience",
-    label: "체험단 이력",
-    shortLabel: "체험단",
+    label: "활동",
+    shortLabel: "활동",
     accent: "cyan",
   },
   { id: "contract", label: "계약", shortLabel: "계약", accent: "violet" },

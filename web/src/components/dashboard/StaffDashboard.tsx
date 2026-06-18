@@ -41,6 +41,7 @@ import {
 import {
   formatContractTargetSummary,
   getContractTargetChannels,
+  getContractVisibleTargetChannels,
 } from "@/lib/task-channel-utils";
 
 export function StaffDashboard() {
@@ -124,8 +125,9 @@ export function StaffDashboard() {
         <div className="space-y-3">
           {contracts.map((c) => {
             const rate = getCompletionRate(data, c);
-            const summaryChannels = targetChannels.filter(
-              (channel) => channel.contractDoneField,
+            const summaryChannels = getContractVisibleTargetChannels(
+              c,
+              data.taskChannels,
             );
             return (
               <Link
