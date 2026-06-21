@@ -13,6 +13,8 @@ export const LIST_SEARCH_PLACEHOLDERS = {
   workOrders: "업체명 · 담당자 · 업무 검색",
   experience: "고객사 · 파트너 · 체험단명 · 전화번호 검색",
   activity: "채널 · 이름 · 활동 검색",
+  activityRegistry: "고객사 · 파트너 · 활동명 · 전화번호 검색",
+  activityRegistryClient: "체험단 · 업무 · 집행 · Q&A 검색",
   payoutQueue: "업체 · 수취인 · 계좌 검색",
 } as const;
 

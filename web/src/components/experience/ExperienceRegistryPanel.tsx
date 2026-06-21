@@ -7,7 +7,9 @@ import { useData } from "@/context/DataContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { SearchBar, SortableTh } from "@/components/ui/DataTable";
+import { SortableTh } from "@/components/ui/DataTable";
+import { ListToolbar } from "@/components/ui/ListToolbar";
+import { LIST_SEARCH_PLACEHOLDERS } from "@/lib/list-ui-consistency";
 import { PeriodFilterBar } from "@/components/ui/PeriodFilterBar";
 import {
   EXPERIENCE_SCHEDULING_STATUS_LABELS,
@@ -90,10 +92,11 @@ export function ExperienceRegistryPanel({
           onChange={setPeriodFilter}
           summary={periodSummary}
         />
-        <SearchBar
-          value={search}
-          onChange={setSearch}
-          placeholder="고객사 · 파트너 · 체험단명 · 전화번호 검색"
+        <ListToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder={LIST_SEARCH_PLACEHOLDERS.experience}
+          showSortHint
         />
       </div>
 

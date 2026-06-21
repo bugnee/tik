@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { MonthPickerInput } from "@/components/ui/MonthPickerInput";
 import { SortableTh } from "@/components/ui/DataTable";
+import { ListToolbar } from "@/components/ui/ListToolbar";
 import { StatCard } from "@/components/ui/StatCard";
 import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
@@ -140,6 +141,8 @@ export function BonusPayrollSummaryPanel() {
           accent="cyan"
         />
       </div>
+
+      <ListToolbar showSortHint className="mb-3" />
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-sm">

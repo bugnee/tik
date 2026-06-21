@@ -8,7 +8,9 @@ import { ExperienceCampaignPanel } from "@/components/experience/ExperienceCampa
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { SearchBar, SortableTh } from "@/components/ui/DataTable";
+import { SortableTh } from "@/components/ui/DataTable";
+import { ListToolbar } from "@/components/ui/ListToolbar";
+import { LIST_SEARCH_PLACEHOLDERS } from "@/lib/list-ui-consistency";
 import { PeriodFilterBar } from "@/components/ui/PeriodFilterBar";
 import {
   COMPANY_ACTIVITY_KIND_ACCENTS,
@@ -121,37 +123,40 @@ export function ActivityRegistryPanel({
           onChange={setPeriodFilter}
           summary={periodSummary}
         />
-        <div className="flex flex-wrap gap-1.5">
-          <KindFilterButton
-            active={kindFilter === "all"}
-            label="전체"
-            count={allRows.length}
-            onClick={() => setKindFilter("all")}
-          />
-          {COMPANY_ACTIVITY_KIND_ORDER.map((kind) => {
-            if (mode === "client" && kind === "expense") return null;
-            const count = kindCounts[kind];
-            return (
-              <KindFilterButton
-                key={kind}
-                active={kindFilter === kind}
-                label={COMPANY_ACTIVITY_KIND_LABELS[kind]}
-                count={count}
-                accent={COMPANY_ACTIVITY_KIND_ACCENTS[kind]}
-                onClick={() =>
-                  setKindFilter((prev) => (prev === kind ? "all" : kind))
-                }
-              />
-            );
-          })}
-        </div>
-        <SearchBar
-          value={search}
-          onChange={setSearch}
-          placeholder={
+        <ListToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder={
             mode === "client"
-              ? "체험단 · 업무 · 집행 · Q&A 검색"
-              : "고객사 · 파트너 · 활동명 · 전화번호 검색"
+              ? LIST_SEARCH_PLACEHOLDERS.activityRegistryClient
+              : LIST_SEARCH_PLACEHOLDERS.activityRegistry
+          }
+          showSortHint
+          filters={
+            <div className="flex flex-wrap gap-1.5">
+              <KindFilterButton
+                active={kindFilter === "all"}
+                label="전체"
+                count={allRows.length}
+                onClick={() => setKindFilter("all")}
+              />
+              {COMPANY_ACTIVITY_KIND_ORDER.map((kind) => {
+                if (mode === "client" && kind === "expense") return null;
+                const count = kindCounts[kind];
+                return (
+                  <KindFilterButton
+                    key={kind}
+                    active={kindFilter === kind}
+                    label={COMPANY_ACTIVITY_KIND_LABELS[kind]}
+                    count={count}
+                    accent={COMPANY_ACTIVITY_KIND_ACCENTS[kind]}
+                    onClick={() =>
+                      setKindFilter((prev) => (prev === kind ? "all" : kind))
+                    }
+                  />
+                );
+              })}
+            </div>
           }
         />
       </div>

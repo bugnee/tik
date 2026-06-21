@@ -20,7 +20,10 @@ import {
   type WorkStatusTreeNode,
 } from "@/lib/dashboard-work-status-utils";
 import { getWorkOrderTaskLabel } from "@/lib/task-channel-utils";
-import { WORK_ORDER_STAGE_LABELS } from "@/lib/work-order-utils";
+import {
+  WORK_ORDER_STAGE_BADGE_VARIANT,
+  WORK_ORDER_STAGE_LABELS,
+} from "@/lib/work-order-utils";
 import type { AppData, UserRole } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
@@ -138,11 +141,7 @@ function TreeNode({
             </span>
             <TaskChannelBadge data={data} taskType={item.taskType} />
             <Badge
-              variant={
-                category === "completed" || item.stage === "order_ready" || item.stage === "paid"
-                  ? "success"
-                  : "default"
-              }
+              variant={WORK_ORDER_STAGE_BADGE_VARIANT[item.stage]}
               className="text-[10px]"
             >
               {WORK_ORDER_STAGE_LABELS[item.stage]}

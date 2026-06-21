@@ -6,7 +6,9 @@ import { ExperienceCampaignPanel } from "@/components/experience/ExperienceCampa
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { SearchBar, SortableTh } from "@/components/ui/DataTable";
+import { SortableTh } from "@/components/ui/DataTable";
+import { ListToolbar } from "@/components/ui/ListToolbar";
+import { LIST_SEARCH_PLACEHOLDERS } from "@/lib/list-ui-consistency";
 import { PeriodFilterBar } from "@/components/ui/PeriodFilterBar";
 import { useData } from "@/context/DataContext";
 import {
@@ -105,32 +107,35 @@ export function ClientChannelActivityPanel({
           onChange={setPeriodFilter}
           summary={periodSummary}
         />
-        <div className="flex flex-wrap gap-1.5">
-          <CategoryFilterButton
-            active={categoryFilter === "all"}
-            label="전체"
-            count={allRows.length}
-            onClick={() => setCategoryFilter("all")}
-          />
-          {CLIENT_CHANNEL_ORDER.map((category) => (
-            <CategoryFilterButton
-              key={category}
-              active={categoryFilter === category}
-              label={CLIENT_CHANNEL_LABELS[category]}
-              count={categoryCounts[category]}
-              accent={CLIENT_CHANNEL_ACCENTS[category]}
-              onClick={() =>
-                setCategoryFilter((prev) =>
-                  prev === category ? "all" : category,
-                )
-              }
-            />
-          ))}
-        </div>
-        <SearchBar
-          value={search}
-          onChange={setSearch}
-          placeholder="채널 · 이름 · 활동 검색"
+        <ListToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder={LIST_SEARCH_PLACEHOLDERS.activity}
+          showSortHint
+          filters={
+            <div className="flex flex-wrap gap-1.5">
+              <CategoryFilterButton
+                active={categoryFilter === "all"}
+                label="전체"
+                count={allRows.length}
+                onClick={() => setCategoryFilter("all")}
+              />
+              {CLIENT_CHANNEL_ORDER.map((category) => (
+                <CategoryFilterButton
+                  key={category}
+                  active={categoryFilter === category}
+                  label={CLIENT_CHANNEL_LABELS[category]}
+                  count={categoryCounts[category]}
+                  accent={CLIENT_CHANNEL_ACCENTS[category]}
+                  onClick={() =>
+                    setCategoryFilter((prev) =>
+                      prev === category ? "all" : category,
+                    )
+                  }
+                />
+              ))}
+            </div>
+          }
         />
         <p className="text-xs text-zinc-500">
           이름은 가운데 * 처리 · 전화번호는 뒷 4자리만 표시됩니다.
