@@ -8,6 +8,7 @@ import { useRole } from "@/context/RoleContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Card } from "@/components/ui/Card";
 import {
   DataTable,
@@ -97,6 +98,7 @@ export function ExpensesManager() {
     editing?.id ?? "create",
     form,
   );
+  const saveMeta = useSaveMeta();
 
   const enriched = useMemo(
     () => expenses.map((e) => enrichExpense(data, e)),
@@ -177,6 +179,7 @@ export function ExpensesManager() {
     } else {
       addExpense({ ...payload, payoutStatus: "unpaid" });
     }
+    saveMeta.recordSave();
     setModalOpen(false);
   }
 
@@ -438,7 +441,12 @@ export function ExpensesManager() {
             <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
               취소
             </Button>
-            <SaveButton type="submit" dirty={formDirty}>
+            <SaveButton
+              type="submit"
+              dirty={formDirty}
+              savedAt={saveMeta.savedAt}
+              savedBy={saveMeta.savedBy}
+            >
               {editing ? "저장" : "등록"}
             </SaveButton>
           </div>

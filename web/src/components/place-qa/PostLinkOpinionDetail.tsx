@@ -6,8 +6,13 @@ import {
   buildLinkOpinionSourceLabel,
   formatPostLinkOpinionAuthor,
 } from "@/lib/post-link-opinion-utils";
-import type { PostLinkOpinion } from "@/lib/types";
-import type { AppData } from "@/lib/types";
+import {
+  QA_EXTERNAL_BUBBLE,
+  QA_EXTERNAL_META,
+  QA_THREAD_PANEL,
+} from "@/components/place-qa/qa-message-styles";
+import { cn } from "@/lib/cn";
+import type { AppData, PostLinkOpinion } from "@/lib/types";
 
 export function PostLinkOpinionDetail({
   data,
@@ -17,7 +22,7 @@ export function PostLinkOpinionDetail({
   opinion: PostLinkOpinion;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
+    <div className={QA_THREAD_PANEL}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -48,8 +53,8 @@ export function PostLinkOpinionDetail({
         </a>
       </div>
 
-      <div className="rounded-xl bg-rose-500/10 px-3 py-2.5 text-sm text-zinc-200">
-        <p className="mb-1 text-[10px] font-medium text-zinc-500">의견 내용</p>
+      <div className={cn(QA_EXTERNAL_BUBBLE, "ml-0 mr-0")}>
+        <p className={QA_EXTERNAL_META}>의견 내용</p>
         <p className="whitespace-pre-wrap">{opinion.body}</p>
       </div>
 

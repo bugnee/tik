@@ -1,9 +1,18 @@
 {
-  "name": "trip-it-korea",
+  "name": "tripitkorea",
   "version": "1.0.0",
   "private": true,
+  "workspaces": [
+    "web",
+    "web-public",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:erp": "npm run dev -w web",
+    "dev:public": "npm run dev -w web-public",
+    "build:erp": "npm run build -w web",
+    "build:public": "npm run build -w web-public",
     "build": "tsc",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",

@@ -7,6 +7,7 @@ import { useRole } from "@/context/RoleContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Card, CardHeader } from "@/components/ui/Card";
 import {
   DataTable,
@@ -60,6 +61,7 @@ export function PartnerFilterSettings() {
     editing?.id ?? "create",
     form ?? {},
   );
+  const saveMeta = useSaveMeta();
 
   if (!canManageContractTerms) {
     return null;
@@ -85,6 +87,7 @@ export function PartnerFilterSettings() {
     } else {
       addPartnerFilterDefinition(form);
     }
+    saveMeta.recordSave();
     setModalOpen(false);
   }
 
@@ -262,7 +265,12 @@ export function PartnerFilterSettings() {
               onChange={(v) => setForm({ ...form, isActive: v })}
             />
             <div className="flex gap-2 pt-2">
-              <SaveButton type="submit" dirty={formDirty}>
+              <SaveButton
+                type="submit"
+                dirty={formDirty}
+                savedAt={saveMeta.savedAt}
+                savedBy={saveMeta.savedBy}
+              >
                 저장
               </SaveButton>
               <Button

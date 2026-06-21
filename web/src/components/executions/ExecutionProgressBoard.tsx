@@ -118,8 +118,8 @@ export function ExecutionProgressBoard({
   return (
     <Card>
       <CardHeader
-        title={`실행 진행 (${executions.length}건)`}
-        subtitle="마감일 기준 4단계 · 숫자 클릭 시 해당 목록"
+        title={`집행 실행 · 채널별 (${executions.length}건)`}
+        subtitle="분야당 1행 · 진행·마감·포스팅 링크 · 달성률·고객 포털에 반영"
         action={
           <Button size="sm" onClick={onAdd}>
             <Plus className="h-4 w-4" />

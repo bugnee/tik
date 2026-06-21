@@ -506,7 +506,7 @@ export function buildSampleSatelliteData(
         id: `plo-s-${ploSeq}`,
         contractId: contract.id,
         linkId: `pl-c${contractNum}-opt-1`,
-        linkUrl: `https://blog.naver.com/tripit-${contractNum}-optimized-1`,
+        linkUrl: `https://blog.naver.com/tripitkorea-${contractNum}-optimized-1`,
         channel: "최적블로그",
         reportSource: "실행 진행",
         executionType: "optimized",

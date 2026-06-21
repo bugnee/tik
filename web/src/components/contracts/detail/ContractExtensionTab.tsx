@@ -7,12 +7,19 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { formatBonusKRW, getEligibilityMessage } from "@/lib/bonus-utils";
 import type { BonusAmounts } from "@/lib/bonus-utils";
+import { TERMS_MODE_LABELS } from "@/lib/contract-terms-approval-utils";
 import { formatKRW } from "@/lib/finance";
-import type { Contract, ExtensionApproval, UserRole } from "@/lib/types";
+import type {
+  Contract,
+  ContractTermsApproval,
+  ExtensionApproval,
+  UserRole,
+} from "@/lib/types";
 
 export function ContractExtensionTab({
   contract,
   extensionApproval,
+  termsApproval,
   bonusEligible,
   expectedBonus,
   expectedPct,
@@ -27,6 +34,7 @@ export function ContractExtensionTab({
 }: {
   contract: Contract;
   extensionApproval?: ExtensionApproval;
+  termsApproval?: ContractTermsApproval;
   bonusEligible: boolean;
   expectedBonus: number;
   expectedPct: number | null;
@@ -39,12 +47,29 @@ export function ContractExtensionTab({
   onRequestExtension: () => void;
   onOpenTermsModal: (mode: "amend" | "renewal") => void;
 }) {
+  const pendingTermsApproval =
+    termsApproval?.status === "pending" ? termsApproval : undefined;
+
   return (
     <Card>
       <CardHeader
         title="연장 전환 신청"
         subtitle="팀장 승인 후 재계약 · 3개월 이상 경과 시 4월차부터 성과급 지급 신청"
+        action={
+          pendingTermsApproval ? (
+            <Badge variant="warning">조건 변경 결재 대기</Badge>
+          ) : undefined
+        }
       />
+      {pendingTermsApproval && (
+        <div className="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-200/90">
+          <Badge variant="warning" className="mr-2">
+            승인 대기
+          </Badge>
+          {TERMS_MODE_LABELS[pendingTermsApproval.mode]} 결재 진행 중 ·{" "}
+          {pendingTermsApproval.createdAt} 상신
+        </div>
+      )}
       {contract.isExtension ? (
         <div className="space-y-4">
           <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 text-center">
@@ -93,11 +118,18 @@ export function ContractExtensionTab({
           </div>
           {canEditTerms && (
             <div className="flex flex-wrap justify-center gap-2">
-              <Button variant="secondary" onClick={() => onOpenTermsModal("amend")}>
+              <Button
+                variant="secondary"
+                onClick={() => onOpenTermsModal("amend")}
+                disabled={!!pendingTermsApproval}
+              >
                 <Pencil className="h-4 w-4" />
                 중간 조건 변경
               </Button>
-              <Button onClick={() => onOpenTermsModal("renewal")}>
+              <Button
+                onClick={() => onOpenTermsModal("renewal")}
+                disabled={!!pendingTermsApproval}
+              >
                 <RefreshCw className="h-4 w-4" />
                 재계약 · 조건 설정
               </Button>

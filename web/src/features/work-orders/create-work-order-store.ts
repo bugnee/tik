@@ -12,6 +12,7 @@ import {
   applyRejectWorkOrderByStaff,
   applyResumeWorkOrder,
   applySubmitWorkOrder,
+  applySyncReferralCommissionWorkOrders,
   applyUpdateWorkOrder,
 } from "@/features/work-orders/work-order-actions";
 import type { WorkOrder, WorkOrderInput } from "@/lib/types";
@@ -46,6 +47,7 @@ export type WorkOrderStore = {
     reason?: string,
   ) => boolean;
   resumeWorkOrder: (id: string) => boolean;
+  syncReferralCommissionSchedules: (contractId?: string) => void;
 };
 
 export function createWorkOrderStore(deps: StoreDeps): WorkOrderStore {
@@ -170,6 +172,12 @@ export function createWorkOrderStore(deps: StoreDeps): WorkOrderStore {
         return result.next;
       });
       return ok;
+    },
+
+    syncReferralCommissionSchedules(contractId) {
+      deps.persist((prev) =>
+        applySyncReferralCommissionWorkOrders(prev, ctx.todayISO(), contractId),
+      );
     },
   };
 }

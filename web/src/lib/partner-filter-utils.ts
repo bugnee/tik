@@ -19,7 +19,7 @@ export const DEFAULT_PARTNER_FILTER_ACCENTS: Record<string, TaskChannelAccent> =
     instagram: "orange",
     clip: "lime",
     tiktok: "emerald",
-    referral: "rose",
+    referral: "sky",
   };
 
 export const DEFAULT_PARTNER_FILTERS: PartnerFilterDefinition[] = [

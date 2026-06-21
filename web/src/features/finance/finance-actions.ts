@@ -2,6 +2,7 @@ import {
   calcBonusClosingDeadline,
   calcScheduledPayDate,
 } from "@/lib/bonus-utils";
+import { applySyncReferralCommissionWorkOrders } from "@/features/work-orders/work-order-actions";
 import { canUserRequestExpense } from "@/lib/expense-payout-utils";
 import type {
   AppData,
@@ -205,5 +206,9 @@ export function applyUpdateClientDepositStatus(
     };
   });
 
-  return { ...prev, contracts, bonusPayments };
+  return applySyncReferralCommissionWorkOrders(
+    { ...prev, contracts, bonusPayments },
+    today,
+    contractId,
+  );
 }

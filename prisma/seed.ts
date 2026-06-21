@@ -22,7 +22,7 @@ async function main() {
 
   const ceo = await prisma.user.create({
     data: {
-      email: "ceo@tripit.kr",
+      email: "ceo@tripitkorea.co.kr",
       password: "hashed",
       name: "김대표",
       role: "CEO",
@@ -31,7 +31,7 @@ async function main() {
 
   const executive = await prisma.user.create({
     data: {
-      email: "exec@tripit.kr",
+      email: "exec@tripitkorea.co.kr",
       password: "hashed",
       name: "박임원",
       role: "EXECUTIVE",
@@ -45,7 +45,7 @@ async function main() {
 
     const leader = await prisma.user.create({
       data: {
-        email: `${config.clientPrefix.toLowerCase()}.leader@tripit.kr`,
+        email: `${config.clientPrefix.toLowerCase()}.leader@tripitkorea.co.kr`,
         password: "hashed",
         name: `${config.name} 팀장`,
         role: "LEADER",
@@ -62,7 +62,7 @@ async function main() {
       [1, 2, 3, 4, 5].map((n) =>
         prisma.user.create({
           data: {
-            email: `${config.clientPrefix.toLowerCase()}.mgr${n}@tripit.kr`,
+            email: `${config.clientPrefix.toLowerCase()}.mgr${n}@tripitkorea.co.kr`,
             password: "hashed",
             name: `${config.name} 담당${n}`,
             role: "MANAGER",

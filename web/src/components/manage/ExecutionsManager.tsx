@@ -6,6 +6,7 @@ import { useData } from "@/context/DataContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Card } from "@/components/ui/Card";
 import {
   DataTable,
@@ -58,6 +59,9 @@ export function ExecutionsManager() {
     editing?.id ?? "create",
     form,
   );
+  const saveMeta = useSaveMeta(
+    editing?.enteredAt ? { savedAt: editing.enteredAt } : null,
+  );
 
   const enriched = useMemo(
     () => executions.map((e) => enrichExecution(data, e)),
@@ -109,6 +113,7 @@ export function ExecutionsManager() {
     } else {
       addExecution(payload);
     }
+    saveMeta.recordSave();
     setModalOpen(false);
   }
 
@@ -307,7 +312,12 @@ export function ExecutionsManager() {
             <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
               취소
             </Button>
-            <SaveButton type="submit" dirty={formDirty}>
+            <SaveButton
+              type="submit"
+              dirty={formDirty}
+              savedAt={saveMeta.savedAt}
+              savedBy={saveMeta.savedBy}
+            >
               {editing ? "저장" : "등록"}
             </SaveButton>
           </div>

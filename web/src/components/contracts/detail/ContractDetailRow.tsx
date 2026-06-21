@@ -22,7 +22,7 @@ const ROW_VALUE_TONE_CLASSES: Record<ContractDetailRowTone, string> = {
   info: "text-cyan-400",
   fee: "font-mono text-emerald-400",
   leader: "text-cyan-400",
-  referral: "text-rose-400",
+  referral: "text-sky-400",
 };
 
 /** 계약 정보 dl 행 — overview·history 등에서 공통 사용 */

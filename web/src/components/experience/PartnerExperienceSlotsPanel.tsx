@@ -230,9 +230,9 @@ export function PartnerExperienceSlotsPanel({
                             className="mt-3 border-t border-zinc-800/80 pt-3"
                           />
                         )}
-                        {proposal.reviewNote && proposal.status !== "pending" && (
+                        {proposal.staffReviewMemo && proposal.status !== "pending" && (
                           <p className="mt-2 text-xs text-zinc-500">
-                            검토: {proposal.reviewNote}
+                            검토: {proposal.staffReviewMemo}
                           </p>
                         )}
                       </div>

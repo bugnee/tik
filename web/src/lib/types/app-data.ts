@@ -1,5 +1,11 @@
 import type { User, Team, AccountProfile } from "@/lib/types/user";
-import type { Contract, ContractRecord, ContractMemo, ExtensionApproval } from "@/lib/types/contract";
+import type {
+  Contract,
+  ContractRecord,
+  ContractMemo,
+  ContractTermsApproval,
+  ExtensionApproval,
+} from "@/lib/types/contract";
 import type { Execution } from "@/lib/types/execution";
 import type { Expense, FundBudget, ExpenseCategoryDefinition } from "@/lib/types/finance";
 import type { Partner, PartnerFilterDefinition, PartnerReferralLead } from "@/lib/types/partner";
@@ -34,6 +40,7 @@ export interface AppData {
   executions: Execution[];
   expenses: Expense[];
   extensionApprovals: ExtensionApproval[];
+  contractTermsApprovals: ContractTermsApproval[];
   bonusPayments: BonusPayment[];
   bonusPolicy: BonusPolicySettings;
   fundBudget: FundBudget;

@@ -1,0 +1,17 @@
+{
+  "name": "@tripitkorea/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./experience": "./src/experience/index.ts",
+    "./public-campaign": "./src/public-campaign/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

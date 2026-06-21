@@ -306,12 +306,7 @@ function ActivityRowGroup({
         </td>
         {mode === "staff" && (
           <td className="py-3 pr-4">
-            <Link
-              href={`/contracts/${row.contractId}`}
-              className="font-medium text-zinc-200 hover:text-cyan-300"
-            >
-              {row.clientName}
-            </Link>
+            <span className="font-medium text-zinc-200">{row.clientName}</span>
             {row.clientTradeName && (
               <p className="text-xs text-zinc-600">{row.clientTradeName}</p>
             )}
@@ -359,14 +354,6 @@ function ActivityRowGroup({
                 )}
               />
             </Button>
-          ) : mode === "staff" ? (
-            <Link
-              href={`/contracts/${row.contractId}`}
-              className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:underline"
-            >
-              계약
-              <ExternalLink className="h-3 w-3" />
-            </Link>
           ) : null}
         </td>
       </tr>

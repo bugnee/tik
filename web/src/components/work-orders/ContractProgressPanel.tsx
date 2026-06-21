@@ -34,8 +34,8 @@ export function ContractProgressPanel({
   return (
     <Card className="mb-4" glow>
       <CardHeader
-        title={`${clientName} · 실행 진행 현황`}
-        subtitle={`전체 ${progress.total}건 · 오더준 ${progress.completed}건 · 가중 진행 ${progress.weightedPercent}%`}
+        title={`${clientName} · 업무 진행 (건당)`}
+        subtitle={`건당 ${progress.total}건 · 파트너·비용·승인·입금 · 클릭 시 아래 타임라인 필터`}
       />
 
       <div className="space-y-5 px-1 pb-1">

@@ -57,10 +57,12 @@ import {
   getCompletionRate,
   getContractActivity,
   getContractExecutions,
+  getContractExecutionsDeduped,
   getContractExpenses,
   getContractExtensionApproval,
   getContractMemos,
   getContractRecords,
+  getContractTermsApproval,
   getTeamName,
   getUserName,
 } from "@/lib/selectors";
@@ -118,7 +120,7 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
   const executions = useMemo(
     () =>
       sortExecutionsByChannel(
-        getContractExecutions(data, contractId),
+        getContractExecutionsDeduped(data, contractId),
         data.taskChannels,
       ),
     [data, contractId],
@@ -137,6 +139,9 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
     [data, contractId],
   );
   const extensionApproval = getContractExtensionApproval(data, contractId);
+  const termsApproval = getContractTermsApproval(data, contractId);
+  const pendingTermsApproval =
+    termsApproval?.status === "pending" ? termsApproval : undefined;
   const targetChannels = useMemo(
     () => getContractTargetChannels(data.taskChannels),
     [data.taskChannels],
@@ -274,6 +279,33 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
     );
     if (mode === "recontract") {
       setTab("overview");
+    }
+  }
+
+  function handleRequestTermsApproval(
+    values: ContractTermsFormValues,
+    mode: ContractTermsChangeMode,
+  ) {
+    if (!contract) return;
+    const payload: ContractTermsFormValues = { ...values };
+    if (!canManageContractTerms) {
+      payload.isExtension = contract.isExtension;
+      payload.hasReferralPromo = contract.hasReferralPromo;
+      payload.referrerPartnerId = contract.referrerPartnerId;
+    }
+    if (mode === "recontract") {
+      payload.isExtension = false;
+    }
+    const ok = data.requestContractTermsApproval(
+      contractId,
+      currentUser.id,
+      mode,
+      payload,
+    );
+    if (ok) {
+      showToast("팀장 결재가 상신되었습니다.");
+    } else {
+      showToast("이미 승인 대기 중인 결재가 있습니다.");
     }
   }
 
@@ -485,9 +517,6 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
         contract={contract}
         progressChannels={progressChannels}
         completionRate={completionRate}
-        scheduledBonusPayDate={scheduledBonusPayDate}
-        bonusEligible={bonusEligible}
-        expectedPct={expectedPct}
       />
 
       <div className="sticky top-14 z-20 -mx-1 rounded-xl border border-zinc-800/80 bg-zinc-950/95 px-1 py-2 backdrop-blur-md">
@@ -605,6 +634,7 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
           scheduledBonusPayDate={scheduledBonusPayDate}
           scheduledBonusClosingDate={scheduledBonusClosingDate}
           canEditTerms={canEditTerms}
+          termsApproval={termsApproval}
           onRequestExtension={handleExtensionRequest}
           onOpenTermsModal={setTermsModalMode}
         />
@@ -634,7 +664,10 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
           open={termsModalMode !== null}
           onClose={() => setTermsModalMode(null)}
           mode={termsModalMode}
+          activeRole={activeRole}
+          pendingApproval={pendingTermsApproval}
           onSave={handleSaveTerms}
+          onRequestApproval={handleRequestTermsApproval}
         />
       )}
 

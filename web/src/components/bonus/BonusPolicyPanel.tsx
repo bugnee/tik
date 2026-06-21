@@ -5,6 +5,7 @@ import { Save, Settings2 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/FormFields";
 import { useData } from "@/context/DataContext";
@@ -151,6 +152,7 @@ function LimitRow({
 }) {
   const { draft, setDraft, isDirty } = useDirtyDraft(String(value));
   const [error, setError] = useState<string | null>(null);
+  const saveMeta = useSaveMeta();
 
   function save() {
     const num = Number(draft);
@@ -167,6 +169,7 @@ function LimitRow({
       setError("저장 실패 — 상위 한도 확인");
       return;
     }
+    saveMeta.recordSave();
     setError(null);
   }
 
@@ -187,7 +190,13 @@ function LimitRow({
           onChange={(e) => setDraft(e.target.value)}
           className="w-24"
         />
-        <SaveButton size="sm" dirty={isDirty} onClick={save}>
+        <SaveButton
+          size="sm"
+          dirty={isDirty}
+          onClick={save}
+          savedAt={saveMeta.savedAt}
+          savedBy={saveMeta.savedBy}
+        >
           <Save className="h-3.5 w-3.5" />
           저장
         </SaveButton>

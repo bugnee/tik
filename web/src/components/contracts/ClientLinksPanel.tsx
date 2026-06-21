@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Link2, Save } from "lucide-react";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/FormFields";
 import {
@@ -64,6 +65,7 @@ export function ClientLinksPanel({
   const [draft, setDraft] = useState<ClientLinksInput>(value);
   const [baseline, setBaseline] = useState(value);
   const dirty = !valuesEqual(draft, baseline);
+  const saveMeta = useSaveMeta();
   const available = getAvailableClientLinks(contract);
 
   useEffect(() => {
@@ -81,6 +83,7 @@ export function ClientLinksPanel({
     onSave?.(normalized);
     setBaseline(normalized);
     setDraft(normalized);
+    saveMeta.recordSave();
   }
 
   return (
@@ -94,7 +97,13 @@ export function ClientLinksPanel({
           <>
             <ClientLinksFields value={draft} onChange={setDraft} />
             <div className="flex justify-end">
-              <SaveButton dirty={dirty} onClick={handleSave} disabled={!dirty}>
+              <SaveButton
+                dirty={dirty}
+                onClick={handleSave}
+                disabled={!dirty}
+                savedAt={saveMeta.savedAt}
+                savedBy={saveMeta.savedBy}
+              >
                 <Save className="h-4 w-4" />
                 저장
               </SaveButton>

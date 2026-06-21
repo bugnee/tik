@@ -1,11 +1,18 @@
 import { canRunContractWork } from "@/lib/client-deposit-utils";
+import { skipPartnerApprovalStages } from "@/lib/partner-workflow-config";
+import {
+  canConfirmReferralCommissionPayout,
+  syncReferralCommissionWorkOrdersInData,
+} from "@/lib/referral-commission-utils";
 import { getValidPostLinks } from "@/lib/execution-utils";
 import { findExecutionForWorkOrder } from "@/lib/execution-generation-utils";
 import { getContractTargetCount } from "@/lib/task-channel-utils";
 import {
   buildExpenseDescription,
   calcWorkOrderTotal,
+  canSubmitWorkOrderToPartner,
   generateWorkOrdersForContract,
+  isReferralCommissionWorkOrder,
   shouldSyncExecutionForTask,
   taskTypeToExecutionType,
   taskTypeToExpenseCategory,
@@ -64,13 +71,17 @@ export function applySubmitWorkOrder(
   const order = prev.workOrders.find((w) => w.id === id);
   if (
     !order ||
+    isReferralCommissionWorkOrder(order) ||
     !["draft", "rejected"].includes(order.stage) ||
     !isContractWorkAllowed(prev, order.contractId) ||
-    !order.partnerId ||
-    calcWorkOrderTotal(order.costLines) <= 0
+    !canSubmitWorkOrderToPartner(order, prev.taskChannels)
   ) {
     return { next: prev, ok: false };
   }
+  const nextStage: WorkOrder["stage"] = skipPartnerApprovalStages()
+    ? "approved"
+    : "pending_approval";
+
   return {
     ok: true,
     next: {
@@ -79,10 +90,13 @@ export function applySubmitWorkOrder(
         w.id === id
           ? {
               ...w,
-              stage: "pending_approval" as const,
+              stage: nextStage,
               requestedBy,
               requestedAt: ctx.todayISO(),
               rejectedReason: undefined,
+              ...(skipPartnerApprovalStages()
+                ? { approvedAt: ctx.todayISO() }
+                : {}),
             }
           : w,
       ),
@@ -204,10 +218,19 @@ export function applyDeliverWorkOrder(
   if (!order || order.stage !== "approved") {
     return { next: prev, ok: false };
   }
-  const links = getValidPostLinks(postLinks);
-  if (links.length === 0 && !memo.trim()) {
+  if (isReferralCommissionWorkOrder(order)) {
     return { next: prev, ok: false };
   }
+  const links = getValidPostLinks(postLinks);
+  if (
+    links.length === 0 &&
+    !memo.trim() &&
+    !isReferralCommissionWorkOrder(order)
+  ) {
+    return { next: prev, ok: false };
+  }
+  const resolvedMemo =
+    memo.trim() || order.memo || (isReferralCommissionWorkOrder(order) ? "리셀러 · 10% 수수료" : "");
   return {
     ok: true,
     next: {
@@ -218,7 +241,7 @@ export function applyDeliverWorkOrder(
               ...w,
               stage: "delivered" as const,
               postLinks: links,
-              memo,
+              memo: resolvedMemo,
               deliveredAt: ctx.todayISO(),
             }
           : w,
@@ -242,23 +265,32 @@ export function applyConfirmWorkOrderPayment(
   ) {
     return { next: prev, ok: false };
   }
+  const contract = prev.contracts.find((c) => c.id === order.contractId);
+  if (
+    isReferralCommissionWorkOrder(order) &&
+    !canConfirmReferralCommissionPayout(contract, order, ctx.todayISO())
+  ) {
+    return { next: prev, ok: false };
+  }
   const partner = prev.partners.find((p) => p.id === order.partnerId);
   const total = calcWorkOrderTotal(order.costLines);
-  if (total <= 0) return { next: prev, ok: false };
 
-  const expenseId = ctx.newId("e");
-  const expense = {
-    id: expenseId,
-    contractId: order.contractId,
-    category: taskTypeToExpenseCategory(order.taskType, prev.taskChannels),
-    description: buildExpenseDescription(order, prev.taskChannels),
-    amount: total,
-    bankAccount: partner?.bankAccount ?? "",
-    accountHolder: partner?.accountHolder ?? "",
-    partnerId: order.partnerId,
-    paymentDueDate: order.dueDate,
-    payoutStatus: "paid" as const,
-  };
+  const expenseId = total > 0 ? ctx.newId("e") : undefined;
+  const expense =
+    total > 0 && expenseId
+      ? {
+          id: expenseId,
+          contractId: order.contractId,
+          category: taskTypeToExpenseCategory(order.taskType, prev.taskChannels),
+          description: buildExpenseDescription(order, prev.taskChannels),
+          amount: total,
+          bankAccount: partner?.bankAccount ?? "",
+          accountHolder: partner?.accountHolder ?? "",
+          partnerId: order.partnerId,
+          paymentDueDate: order.dueDate,
+          payoutStatus: "paid" as const,
+        }
+      : null;
 
   const execType = taskTypeToExecutionType(order.taskType, prev.taskChannels);
   let executionId = order.executionId;
@@ -363,7 +395,7 @@ export function applyConfirmWorkOrderPayment(
     ok: true,
     next: {
       ...prev,
-      expenses: [...prev.expenses, expense],
+      expenses: expense ? [...prev.expenses, expense] : prev.expenses,
       executions,
       contracts,
       workOrders: prev.workOrders.map((w) =>
@@ -526,4 +558,22 @@ export function applyResumeWorkOrder(
       ),
     },
   };
+}
+
+/** 고객 입금·10일 지급 규칙 — 리셀러 수수료 건 일정 동기화 */
+export function applySyncReferralCommissionWorkOrders(
+  prev: AppData,
+  today: string,
+  contractId?: string,
+): AppData {
+  const workOrders = syncReferralCommissionWorkOrdersInData(
+    prev,
+    today,
+    contractId,
+  );
+  const changed = workOrders.some(
+    (order, index) => order !== prev.workOrders[index],
+  );
+  if (!changed) return prev;
+  return { ...prev, workOrders };
 }

@@ -107,7 +107,7 @@ function LoginScreen() {
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-900/40">
             <Plane className="h-7 w-7 text-white" strokeWidth={2.5} />
           </div>
-          <h1 className="text-xl font-bold text-zinc-50">TRIP IT KOREA ERP</h1>
+          <h1 className="text-xl font-bold text-zinc-50">TripItKorea ERP</h1>
           <p className="mt-2 text-sm text-zinc-400">
             Google 계정으로 로그인 후, 대표·임원 승인을 받아 이용합니다.
           </p>

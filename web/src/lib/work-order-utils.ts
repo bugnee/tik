@@ -4,6 +4,7 @@ import type {
   ExecutionType,
   ExpenseCategory,
   PartnerCategory,
+  PostLinkEntry,
   TaskChannelDefinition,
   WorkOrder,
   WorkOrderCostLine,
@@ -21,6 +22,9 @@ import {
   taskChannelToExpenseCategory,
   taskChannelToPartnerCategory,
 } from "@/lib/task-channel-utils";
+import { getValidPostLinks } from "@/lib/execution-utils";
+import { todayISO } from "@/lib/bonus-utils";
+import { getReferralCommissionStageLabel } from "@/lib/referral-commission-utils";
 
 /** @deprecated 설정(taskChannels) 우선 — getWorkOrderTaskLabel(data, id) 사용 */
 export const WORK_ORDER_TASK_LABELS: Record<string, string> = {
@@ -43,6 +47,13 @@ export function shouldSyncExecutionForTask(
 ): boolean {
   if (channels) return shouldSyncExecutionForChannel(channels, taskType);
   return taskType !== "referral";
+}
+
+/** 영업 후 계약 체결 수수료 — 집행·링크·키워드 업무 없음 */
+export function isReferralCommissionWorkOrder(
+  order: Pick<WorkOrder, "taskType">,
+): boolean {
+  return order.taskType === "referral";
 }
 
 export const WORK_ORDER_COST_LABELS: Record<WorkOrderCostType, string> = {
@@ -82,6 +93,18 @@ export const WORK_ORDER_STAGE_LABELS: Record<WorkOrderStage, string> = {
   postponed: "연기",
 };
 
+/** 업무 단계 라벨 — 리셀러 수수료는 입금+10일 규칙 반영 */
+export function getWorkOrderStageLabel(
+  order: WorkOrder,
+  contract: Contract | undefined,
+  referenceDate = todayISO(),
+): string {
+  if (isReferralCommissionWorkOrder(order)) {
+    return getReferralCommissionStageLabel(order, contract, referenceDate);
+  }
+  return WORK_ORDER_STAGE_LABELS[order.stage];
+}
+
 /** 고객사 포털용 단계 표기 */
 export const CLIENT_WORK_STAGE_LABELS: Record<WorkOrderStage, string> = {
   draft: "업무 준비",
@@ -103,6 +126,41 @@ export function workOrderKey(
   sequence: number,
 ): string {
   return `${contractId}:${taskType}:${sequence}`;
+}
+
+const WORK_ORDER_STAGE_RANK: Record<WorkOrderStage, number> = {
+  order_ready: 100,
+  paid: 90,
+  delivered: 80,
+  approved: 70,
+  pending_staff_confirm: 60,
+  pending_approval: 50,
+  on_hold: 40,
+  postponed: 35,
+  rejected: 20,
+  draft: 10,
+  cancelled: 0,
+};
+
+/** 동일 contract·분야·회차 업무 중복 제거 — 진행 단계가 높은 건 유지 */
+export function dedupeWorkOrders(workOrders: WorkOrder[]): WorkOrder[] {
+  const byKey = new Map<string, WorkOrder>();
+
+  for (const order of workOrders) {
+    const key = workOrderKey(order.contractId, order.taskType, order.sequence);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, order);
+      continue;
+    }
+    const existingRank = WORK_ORDER_STAGE_RANK[existing.stage] ?? 0;
+    const nextRank = WORK_ORDER_STAGE_RANK[order.stage] ?? 0;
+    if (nextRank > existingRank) {
+      byKey.set(key, order);
+    }
+  }
+
+  return [...byKey.values()];
 }
 
 export function spreadDueDate(
@@ -157,7 +215,9 @@ export function generateWorkOrdersForContract(
           : [],
         stage: "draft",
         postLinks: [],
-        memo: isReferral ? "리셀러 · 10% 수수료" : "",
+        memo: isReferral
+          ? "고객사 입금 대기 · 입금 확인 후 10일 뒤 리셀러 지급"
+          : "",
         createdAt: new Date().toISOString().slice(0, 10),
       });
     }
@@ -209,9 +269,36 @@ export function calcWorkOrderTotal(lines: WorkOrderCostLine[]): number {
   return lines.reduce((s, l) => s + (l.amount || 0), 0);
 }
 
+/** 리셀러 등 수수료 필수 분야는 비용 면제 불가 */
+export function canWaiveWorkOrderCost(
+  taskType: WorkOrderTaskType,
+  channels?: TaskChannelDefinition[],
+): boolean {
+  if (taskType === "referral") return false;
+  const channel = channels?.find((c) => c.id === taskType);
+  return channel?.kind !== "referral_promo";
+}
+
+export function isNoCostWorkOrder(order: Pick<WorkOrder, "costLines">): boolean {
+  return calcWorkOrderTotal(order.costLines) <= 0;
+}
+
+/** 파트너 승인 요청 가능 여부 — 파트너 필수, 리셀러는 비용 1원 이상 필수 */
+export function canSubmitWorkOrderToPartner(
+  order: Pick<WorkOrder, "partnerId" | "costLines" | "taskType">,
+  channels?: TaskChannelDefinition[],
+): boolean {
+  if (!order.partnerId) return false;
+  if (!canWaiveWorkOrderCost(order.taskType, channels)) {
+    return calcWorkOrderTotal(order.costLines) > 0;
+  }
+  return true;
+}
+
 export function formatCostLinesSummary(lines: WorkOrderCostLine[]): string {
-  return lines
-    .filter((l) => l.amount > 0)
+  const items = lines.filter((l) => l.amount > 0);
+  if (items.length === 0) return "비용 없음";
+  return items
     .map((l) => `${WORK_ORDER_COST_LABELS[l.type]} ${l.amount.toLocaleString()}원`)
     .join(" · ");
 }
@@ -249,6 +336,73 @@ export function enrichWorkOrder(data: AppData, order: WorkOrder) {
 }
 
 export type EnrichedWorkOrder = ReturnType<typeof enrichWorkOrder>;
+
+/** 업무 건에 연결된 성과 링크 목록 (내부 조회) */
+function collectWorkOrderPostLinkPool(
+  data: AppData,
+  order: WorkOrder,
+): PostLinkEntry[] {
+  if (isReferralCommissionWorkOrder(order)) return [];
+
+  const fromOrder = getValidPostLinks(order.postLinks, order.dueDate);
+  if (fromOrder.length > 0) return fromOrder;
+
+  if (order.executionId) {
+    const linked = data.executions.find((e) => e.id === order.executionId);
+    if (linked) {
+      return getValidPostLinks(
+        linked.postLinks,
+        linked.dueDate ?? order.dueDate,
+      );
+    }
+  }
+
+  const channel = data.taskChannels.find((c) => c.id === order.taskType);
+  if (channel?.executionType) {
+    const byChannel = data.executions.find(
+      (e) =>
+        e.contractId === order.contractId &&
+        e.type === channel.executionType,
+    );
+    if (byChannel) {
+      return getValidPostLinks(
+        byChannel.postLinks,
+        byChannel.dueDate ?? order.dueDate,
+      );
+    }
+  }
+
+  return [];
+}
+
+/** 회차(sequence)에 해당하는 링크 1건 — 집행 실행 전체 링크 중 N번째 매칭 */
+function pickWorkOrderPostLinkForSequence(
+  links: PostLinkEntry[],
+  sequence: number,
+): PostLinkEntry | null {
+  if (links.length === 0) return null;
+  if (links.length === 1) return links[0]!;
+  const index = sequence - 1;
+  if (index >= 0 && index < links.length) return links[index]!;
+  return null;
+}
+
+/** 업무 건에 연결된 성과 링크 (워크오더 → 집행 실행 순으로 조회) */
+export function resolveWorkOrderPostLinks(
+  data: AppData,
+  order: WorkOrder,
+): PostLinkEntry[] {
+  return collectWorkOrderPostLinkPool(data, order);
+}
+
+/** 업무 타임라인용 — 해당 회차 링크 1건만 */
+export function resolveWorkOrderPostLink(
+  data: AppData,
+  order: WorkOrder,
+): PostLinkEntry | null {
+  const pool = collectWorkOrderPostLinkPool(data, order);
+  return pickWorkOrderPostLinkForSequence(pool, order.sequence);
+}
 
 export function filterWorkOrdersByPartner(
   orders: WorkOrder[],

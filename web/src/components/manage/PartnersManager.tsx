@@ -17,6 +17,7 @@ import { useRole } from "@/context/RoleContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Card } from "@/components/ui/Card";
 import {
   DataTable,
@@ -127,6 +128,7 @@ export function PartnersManager() {
     editing?.id ?? "create",
     form,
   );
+  const saveMeta = useSaveMeta();
 
   const counts = useMemo(() => {
     const active = partners.filter(isPartnerExpenseSelectable);
@@ -216,6 +218,7 @@ export function PartnersManager() {
     } else {
       addPartner(payload);
     }
+    saveMeta.recordSave();
     setModalOpen(false);
   }
 
@@ -611,7 +614,12 @@ export function PartnersManager() {
             >
               취소
             </Button>
-            <SaveButton type="submit" dirty={formDirty}>
+            <SaveButton
+              type="submit"
+              dirty={formDirty}
+              savedAt={saveMeta.savedAt}
+              savedBy={saveMeta.savedBy}
+            >
               {editing ? "저장" : "등록"}
             </SaveButton>
           </div>

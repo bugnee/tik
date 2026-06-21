@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Calendar,
   Ban,
@@ -17,11 +18,13 @@ import {
 } from "lucide-react";
 import { OrderReadyQueue } from "@/components/work-orders/OrderReadyQueue";
 import { WorkOrderCostBreakdown } from "@/components/work-orders/WorkOrderCostBreakdown";
+import { WorkOrderTimelineDeliverables } from "@/components/work-orders/WorkOrderTimelineDeliverables";
 import { ContractProgressPanel } from "@/components/work-orders/ContractProgressPanel";
 import { ContractWorkCalendar } from "@/components/experience/ContractWorkCalendar";
 import { ExperienceCampaignPanel } from "@/components/experience/ExperienceCampaignPanel";
-import { DashboardWorkStatusPanel } from "@/components/dashboard/DashboardWorkStatusPanel";
+import { ContractExecutionDashboardPanel } from "@/components/contracts/ContractExecutionDashboardPanel";
 import { StaffWorkConfirmPanel } from "@/components/work-orders/StaffWorkConfirmPanel";
+import { StaffWorkDeliverCard } from "@/components/work-orders/StaffWorkDeliverCard";
 import { useData } from "@/context/DataContext";
 import { useWorkOrders } from "@/features/work-orders/useWorkOrders";
 import { useRole } from "@/context/RoleContext";
@@ -29,10 +32,11 @@ import { Badge } from "@/components/ui/Badge";
 import { TaskChannelBadge } from "@/components/ui/TaskChannelBadge";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { valuesEqual } from "@/lib/form-dirty";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { PageHeader, SearchBar } from "@/components/ui/DataTable";
-import { Input, Select } from "@/components/ui/FormFields";
+import { Input, Select, Checkbox } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
 import { TabBar } from "@/components/ui/TabBar";
 import { formatKRW } from "@/lib/finance";
@@ -47,9 +51,14 @@ import type { WorkOrder, WorkOrderCostLine, WorkOrderTaskType } from "@/lib/type
 import {
   calcContractWorkProgress,
   buildReferralCostLines,
+  calcWorkOrderTotal,
+  canSubmitWorkOrderToPartner,
+  canWaiveWorkOrderCost,
   emptyCostLines,
   enrichWorkOrder,
   filterWorkOrdersByContract,
+  getWorkOrderStageLabel,
+  isReferralCommissionWorkOrder,
   sortWorkOrdersTimeline,
   WORK_ORDER_COST_LABELS,
   WORK_ORDER_STAGE_LABELS,
@@ -66,7 +75,18 @@ import {
   getExperienceTimelineEntries,
 } from "@/lib/experience-campaign-utils";
 import { isClientDepositBlockingWork } from "@/lib/client-deposit-utils";
+import { canConfirmReferralCommissionPayout } from "@/lib/referral-commission-utils";
 import { ClientDepositRequestPanel } from "@/components/client-portal/ClientDepositRequestPanel";
+import { ExecutionPeriodFilterBar } from "@/components/work-orders/ExecutionPeriodFilterBar";
+import {
+  createDefaultExecutionPeriodFilter,
+  filterWorkOrdersInExecutionPeriod,
+  resolveExecutionPeriod,
+  experienceEntryInExecutionPeriod,
+  type ExecutionPeriodFilterValue,
+} from "@/lib/execution-period-utils";
+import { skipPartnerApprovalStages } from "@/lib/partner-workflow-config";
+import { getWorkOrderNextActionHint } from "@/lib/staff-daily-workflow-utils";
 
 const STAGE_VARIANT: Record<
   WorkOrder["stage"],
@@ -105,14 +125,18 @@ export function ExecutionProgressManager() {
     holdWorkOrder,
     postponeWorkOrder,
     resumeWorkOrder,
+    syncReferralCommissionSchedules,
   } = useWorkOrders();
   const { currentUser } = useRole();
+  const searchParams = useSearchParams();
   const { contracts, partners, partnerFilterDefinitions } = data;
 
   const [tab, setTab] = useState<"timeline" | "order_ready" | "experience">(
     "timeline",
   );
-  const [contractId, setContractId] = useState("");
+  const [contractId, setContractId] = useState(
+    () => searchParams.get("contract") ?? "",
+  );
   const [contractSearch, setContractSearch] = useState("");
   const [fieldFilter, setFieldFilter] = useState<WorkOrderTaskType | null>(null);
   const [editOrder, setEditOrder] = useState<WorkOrder | null>(null);
@@ -125,6 +149,10 @@ export function ExecutionProgressManager() {
   const [postponeReason, setPostponeReason] = useState("");
   const [partnerId, setPartnerId] = useState("");
   const [costLines, setCostLines] = useState<WorkOrderCostLine[]>(emptyCostLines());
+  const [noCost, setNoCost] = useState(false);
+  const [periodFilter, setPeriodFilter] = useState<ExecutionPeriodFilterValue | null>(
+    null,
+  );
 
   const visibleContracts = useMemo(
     () =>
@@ -155,6 +183,13 @@ export function ExecutionProgressManager() {
   }, [filteredContracts, contractId, visibleContracts]);
 
   useEffect(() => {
+    const fromUrl = searchParams.get("contract");
+    if (fromUrl && visibleContracts.some((c) => c.id === fromUrl)) {
+      setContractId(fromUrl);
+    }
+  }, [searchParams, visibleContracts]);
+
+  useEffect(() => {
     if (!contractId && selectContracts[0]) {
       setContractId(selectContracts[0].id);
     }
@@ -168,18 +203,47 @@ export function ExecutionProgressManager() {
     setFieldFilter(null);
   }, [contractId]);
 
+  const contract = visibleContracts.find((c) => c.id === contractId);
+
+  useEffect(() => {
+    if (!contractId) return;
+    syncReferralCommissionSchedules(contractId);
+  }, [
+    contractId,
+    contract?.lastClientDepositDate,
+    contract?.clientDepositStatus,
+    contract?.monthlyFee,
+    contract?.referrerPartnerId,
+    contract?.hasReferralPromo,
+    syncReferralCommissionSchedules,
+  ]);
+
+  useEffect(() => {
+    if (contract) {
+      setPeriodFilter(createDefaultExecutionPeriodFilter(contract));
+    } else {
+      setPeriodFilter(null);
+    }
+  }, [contract?.id, contract?.contractStartDate, contract?.contractEndDate]);
+
+  const resolvedPeriod = useMemo(() => {
+    if (!contract || !periodFilter) return null;
+    return resolveExecutionPeriod(periodFilter, contract);
+  }, [contract, periodFilter]);
+
   const targetChannels = useMemo(
     () => getContractTargetChannels(data.taskChannels),
     [data.taskChannels],
   );
-
-  const contract = visibleContracts.find((c) => c.id === contractId);
   const depositBlocked = contract ? isClientDepositBlockingWork(contract) : false;
   const workBlockTitle = "고객사 광고비 입금 확인 후 이용 가능합니다";
   const timeline = useMemo(() => {
     const list = filterWorkOrdersByContract(workOrders, contractId);
-    return sortWorkOrdersTimeline(list).map((o) => enrichWorkOrder(data, o));
-  }, [workOrders, contractId, data]);
+    const scoped = resolvedPeriod
+      ? filterWorkOrdersInExecutionPeriod(list, resolvedPeriod)
+      : list;
+    return sortWorkOrdersTimeline(scoped).map((o) => enrichWorkOrder(data, o));
+  }, [workOrders, contractId, data, resolvedPeriod]);
 
   const filteredTimeline = useMemo(() => {
     if (!fieldFilter) return timeline;
@@ -187,11 +251,23 @@ export function ExecutionProgressManager() {
   }, [timeline, fieldFilter]);
 
   const experienceTimeline = useMemo(
-    () =>
-      contractId
-        ? getExperienceTimelineEntries(data.experienceCampaigns ?? [], contractId)
-        : [],
-    [data.experienceCampaigns, contractId],
+    () => {
+      if (!contractId) return [];
+      const entries = getExperienceTimelineEntries(
+        data.experienceCampaigns ?? [],
+        contractId,
+      );
+      if (!resolvedPeriod) return entries;
+      return entries.filter((entry) => {
+        const participant = entry.participant;
+        const date =
+          participant.experienceDate ||
+          participant.postRegisteredAt ||
+          participant.registeredAt;
+        return experienceEntryInExecutionPeriod(date, resolvedPeriod);
+      });
+    },
+    [data.experienceCampaigns, contractId, resolvedPeriod],
   );
 
   type ProgressTimelineRow =
@@ -216,7 +292,7 @@ export function ExecutionProgressManager() {
       order,
     }));
 
-    if (!fieldFilter || fieldFilter === "experience") {
+    if (fieldFilter === "experience") {
       for (const entry of experienceTimeline) {
         const participant = entry.participant;
         rows.push({
@@ -237,10 +313,15 @@ export function ExecutionProgressManager() {
   const progress = useMemo(
     () =>
       calcContractWorkProgress(
-        filterWorkOrdersByContract(workOrders, contractId),
+        resolvedPeriod
+          ? filterWorkOrdersInExecutionPeriod(
+              filterWorkOrdersByContract(workOrders, contractId),
+              resolvedPeriod,
+            )
+          : filterWorkOrdersByContract(workOrders, contractId),
         data.taskChannels,
       ),
-    [workOrders, contractId, data.taskChannels],
+    [workOrders, contractId, data.taskChannels, resolvedPeriod],
   );
 
   const fieldFilterLabel = useMemo(() => {
@@ -254,17 +335,35 @@ export function ExecutionProgressManager() {
   const partnerOptions = useMemo(() => {
     if (!editOrder) return [];
     const cat = taskTypeToPartnerCategory(editOrder.taskType, data.taskChannels);
-    return partners.filter(
-      (p) => p.status === "active" && p.categories.includes(cat),
-    );
-  }, [editOrder, partners, data.taskChannels]);
+    const active = partners.filter((p) => p.status === "active");
+
+    if (editOrder.taskType === "referral") {
+      return active.filter((p) => p.categories.includes(cat));
+    }
+
+    // 비용 없음 — 분야 제한 없이 전체 파트너 (기자단·체험단·인플루언서·유튜브 등)
+    if (noCost) {
+      return [...active].sort((a, b) =>
+        a.companyName.localeCompare(b.companyName, "ko"),
+      );
+    }
+
+    return active.filter((p) => p.categories.includes(cat));
+  }, [editOrder, partners, data.taskChannels, noCost]);
 
   const assignCategory = editOrder
     ? taskTypeToPartnerCategory(editOrder.taskType, data.taskChannels)
     : null;
+  const editCanWaiveCost = editOrder
+    ? canWaiveWorkOrderCost(editOrder.taskType, data.taskChannels)
+    : false;
+  const editCostTotal = calcWorkOrderTotal(
+    noCost ? emptyCostLines() : costLines,
+  );
 
   function selectPartner(id: string) {
     setPartnerId(id);
+    if (noCost) return;
     const partner = partners.find((p) => p.id === id);
     if (partner && editOrder?.taskType !== "referral") {
       setCostLines((prev) => applyPartnerUnitPriceToCostLines(partner, prev));
@@ -283,6 +382,8 @@ export function ExecutionProgressManager() {
     setEditOrder(order);
     setPartnerId(pid);
     setCostLines(lines);
+    const waive = canWaiveWorkOrderCost(order.taskType, data.taskChannels);
+    setNoCost(waive && calcWorkOrderTotal(lines) <= 0 && Boolean(pid));
     setEditBaseline({ partnerId: pid, costLines: lines });
   }
 
@@ -292,24 +393,67 @@ export function ExecutionProgressManager() {
       (partnerId !== editBaseline.partnerId ||
         !valuesEqual(costLines, editBaseline.costLines)),
   );
+  const draftSaveMeta = useSaveMeta();
 
   function saveDraft() {
     if (!editOrder) return;
-    updateWorkOrder(editOrder.id, { partnerId, costLines });
+    updateWorkOrder(editOrder.id, {
+      partnerId,
+      costLines: noCost ? emptyCostLines() : costLines,
+    });
+    draftSaveMeta.recordSave();
     setEditOrder(null);
   }
 
   function sendToPartner() {
     if (!editOrder) return;
-    updateWorkOrder(editOrder.id, { partnerId, costLines });
+    if (isReferralCommissionWorkOrder(editOrder)) {
+      alert(
+        "리셀러 수수료는 업무 배정 없이 자동 처리됩니다. 고객사 입금 확인 후 10일 뒤 지급 가능합니다.",
+      );
+      return;
+    }
+    const payload = {
+      partnerId,
+      costLines: noCost ? emptyCostLines() : costLines,
+    };
+    updateWorkOrder(editOrder.id, payload);
     const ok = submitWorkOrder(editOrder.id, currentUser.id);
-    if (!ok) alert("파트너·비용(1원 이상)을 확인 후 전송하세요.");
-    else setEditOrder(null);
+    if (!ok) {
+      if (!partnerId) {
+        alert("파트너를 선택해 주세요.");
+      } else if (
+        !canSubmitWorkOrderToPartner(
+          { ...editOrder, ...payload },
+          data.taskChannels,
+        )
+      ) {
+        alert("리셀러 업무는 비용 1원 이상 입력이 필요합니다.");
+      } else {
+        alert(
+          skipPartnerApprovalStages()
+            ? "업무를 배정할 수 없습니다. 입금 확인 상태를 확인해 주세요."
+            : "파트너 승인 요청을 보낼 수 없습니다. 입금 확인 상태를 확인해 주세요.",
+        );
+      }
+    } else setEditOrder(null);
   }
 
-  function markPaid(orderId: string) {
-    const ok = confirmWorkOrderPayment(orderId, currentUser.id);
-    if (!ok) alert("입금 확인할 수 없습니다.");
+  function markPaid(order: WorkOrder) {
+    if (
+      isReferralCommissionWorkOrder(order) &&
+      !canConfirmReferralCommissionPayout(contract, order)
+    ) {
+      alert(
+        "리셀러 수수료는 고객사 입금 확인 후 10일이 지나야 지급할 수 있습니다.",
+      );
+      return;
+    }
+    const ok = confirmWorkOrderPayment(order.id, currentUser.id);
+    if (!ok) {
+      alert("완료 처리할 수 없습니다.");
+      return;
+    }
   }
 
   function handleCancel(order: WorkOrder) {
@@ -363,7 +507,7 @@ export function ExecutionProgressManager() {
     <>
       <PageHeader
         title="실행 진행"
-        description="계약 조건 기준 업무 타임라인 · 파트너 배정 · 원고료/촬영비/출장비/기타"
+        description="계약 KPI · 실행 목록 · 업무 타임라인 · 파트너 배정"
         action={
           contract && (
             <Link href={`/contracts/${contract.id}`}>
@@ -489,12 +633,34 @@ export function ExecutionProgressManager() {
             )}
             {contract && (
               <p className="mt-2 text-xs text-zinc-500">
-                계약기간 {contract.contractStartDate} ~{" "}
-                {contract.contractEndDate} · 업무 {timeline.length}건 · 체험단{" "}
-                {experienceTimeline.length}명
+                {resolvedPeriod?.label ?? "계약기간"} · 업무 {timeline.length}건
+                · 체험단 {experienceTimeline.length}명
               </p>
             )}
+            {contract && (
+              <div className="mt-3 border-t border-zinc-800 pt-3">
+                <Link href={`/contracts/${contract.id}/client-portal`}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="gap-1.5 border-cyan-500/25 text-cyan-300 hover:border-cyan-500/40 hover:text-cyan-200"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    고객사 포털 대시보드
+                  </Button>
+                </Link>
+              </div>
+            )}
           </Card>
+
+          {contract && periodFilter && resolvedPeriod && (
+            <ExecutionPeriodFilterBar
+              className="mb-4"
+              value={periodFilter}
+              onChange={setPeriodFilter}
+              resolved={resolvedPeriod}
+            />
+          )}
 
           {contract && depositBlocked && (
             <ClientDepositRequestPanel
@@ -505,9 +671,13 @@ export function ExecutionProgressManager() {
             />
           )}
 
-          <StaffWorkConfirmPanel className="mb-4" />
-
-          <DashboardWorkStatusPanel className="mb-4" />
+          {contract && (
+            <ContractExecutionDashboardPanel
+              contract={contract}
+              period={resolvedPeriod ?? undefined}
+              className="mb-4"
+            />
+          )}
 
           {contract && progress.total > 0 && (
             <ContractProgressPanel
@@ -517,6 +687,49 @@ export function ExecutionProgressManager() {
               onFieldSelect={setFieldFilter}
             />
           )}
+
+          {!skipPartnerApprovalStages() && (
+            <StaffWorkConfirmPanel className="mb-4" />
+          )}
+
+          {skipPartnerApprovalStages() &&
+            contractId &&
+            progressTimeline.some(
+              (row) =>
+                row.kind === "work" &&
+                row.order.stage === "approved" &&
+                !isReferralCommissionWorkOrder(row.order),
+            ) && (
+              <Card className="mb-4" glow>
+                <CardHeader
+                  title="결과 등록 (담당)"
+                  subtitle="집행 업무는 결과 URL · 리셀러 수수료는 계약 기준 처리"
+                />
+                <div className="space-y-3 px-4 pb-4">
+                  {progressTimeline
+                    .filter(
+                      (row): row is Extract<typeof row, { kind: "work" }> =>
+                        row.kind === "work" &&
+                        row.order.stage === "approved" &&
+                        !isReferralCommissionWorkOrder(row.order),
+                    )
+                    .map((row) => (
+                      <StaffWorkDeliverCard
+                        key={row.order.id}
+                        data={data}
+                        order={row.order}
+                      />
+                    ))}
+                </div>
+              </Card>
+            )}
+
+          <Card className="mb-4" glow>
+            <CardHeader
+              title="업무 타임라인 (건당)"
+              subtitle="건당 업무 · 노출채널 · 키워드 · 피드백 링크 · 파트너·비용 · 오더준 시 집행 실행에 합산"
+            />
+          </Card>
 
           {fieldFilter && (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs">
@@ -554,18 +767,36 @@ export function ExecutionProgressManager() {
                             taskType={row.order.taskType}
                           />
                           <Badge variant={STAGE_VARIANT[row.order.stage]}>
-                            {WORK_ORDER_STAGE_LABELS[row.order.stage]}
+                            {getWorkOrderStageLabel(row.order, contract)}
                           </Badge>
                         </div>
                         <p className="mt-1 flex items-center gap-1 text-xs text-zinc-500">
                           <Calendar className="h-3 w-3" />
                           마감 {row.order.dueDate}
                         </p>
+                        {(() => {
+                          const nextHint = getWorkOrderNextActionHint(
+                            row.order,
+                            contract,
+                          );
+                          return nextHint ? (
+                            <p className="mt-1 text-xs text-cyan-400/90">
+                              {nextHint}
+                            </p>
+                          ) : null;
+                        })()}
                         {row.order.partnerName !== "-" && (
                           <p className="mt-1 text-xs text-cyan-400/90">
                             파트너 {row.order.partnerName}
                             {row.order.totalAmount > 0 &&
                               ` · ${formatKRW(row.order.totalAmount)}`}
+                            {row.order.totalAmount <= 0 &&
+                              row.order.partnerId && (
+                                <span className="text-zinc-500">
+                                  {" "}
+                                  · 비용 없음
+                                </span>
+                              )}
                           </p>
                         )}
                         {row.order.costLines.some((l) => l.amount > 0) && (
@@ -573,8 +804,14 @@ export function ExecutionProgressManager() {
                             lines={row.order.costLines}
                             align="start"
                             className="mt-1"
+                            variant={
+                              isReferralCommissionWorkOrder(row.order)
+                                ? "referral"
+                                : "default"
+                            }
                           />
                         )}
+                        <WorkOrderTimelineDeliverables order={row.order} />
                         {row.order.rejectedReason && (
                           <p className="mt-1 text-xs text-rose-400">
                             반려: {row.order.rejectedReason}
@@ -601,7 +838,8 @@ export function ExecutionProgressManager() {
                         )}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {["draft", "rejected"].includes(row.order.stage) && (
+                        {["draft", "rejected"].includes(row.order.stage) &&
+                          !isReferralCommissionWorkOrder(row.order) && (
                           <Button
                             size="sm"
                             disabled={depositBlocked}
@@ -614,12 +852,33 @@ export function ExecutionProgressManager() {
                         {row.order.stage === "delivered" && (
                           <Button
                             size="sm"
-                            disabled={depositBlocked}
-                            title={depositBlocked ? workBlockTitle : undefined}
-                            onClick={() => markPaid(row.order.id)}
+                            disabled={
+                              depositBlocked ||
+                              (isReferralCommissionWorkOrder(row.order) &&
+                                !canConfirmReferralCommissionPayout(
+                                  contract,
+                                  row.order,
+                                ))
+                            }
+                            title={
+                              depositBlocked
+                                ? workBlockTitle
+                                : isReferralCommissionWorkOrder(row.order) &&
+                                    !canConfirmReferralCommissionPayout(
+                                      contract,
+                                      row.order,
+                                    )
+                                  ? "고객사 입금 확인 후 10일 경과 시 지급 가능"
+                                  : undefined
+                            }
+                            onClick={() => markPaid(row.order)}
                           >
                             <CheckCircle2 className="h-3.5 w-3.5" />
-                            입금 확인
+                            {isReferralCommissionWorkOrder(row.order)
+                              ? "리셀러 지급 확인"
+                              : row.order.totalAmount > 0
+                                ? "입금 확인"
+                                : "완료 확인"}
                           </Button>
                         )}
                         {row.order.stage === "order_ready" && (
@@ -771,17 +1030,24 @@ export function ExecutionProgressManager() {
             </div>
 
             {editOrder.taskType === "referral" && (
-              <p className="rounded-lg border border-rose-500/20 bg-rose-500/5 px-3 py-2 text-xs text-zinc-400">
+              <p className="rounded-lg border border-sky-400/35 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/90">
                 리셀러 업무 · 월 광고비 10% 수수료 (계약에 연결된 리셀러
                 파트너 기본 배정)
               </p>
             )}
 
-            {editOrder.taskType !== "referral" && assignCategory && (
+            {editOrder.taskType !== "referral" && assignCategory && !noCost && (
               <p className="text-xs text-zinc-500">
                 {getPartnerFilterLabel(partnerFilterDefinitions, assignCategory)}{" "}
                 분야 파트너사만
                 표시 · 선택 시 참고 단가가 원고료에 반영됩니다
+              </p>
+            )}
+
+            {editOrder.taskType !== "referral" && noCost && (
+              <p className="text-xs text-zinc-500">
+                비용 없음 · 기자단·체험단·인플루언서·유튜브 등 전체 파트너 표시
+                (분야 제한 없음)
               </p>
             )}
 
@@ -797,16 +1063,43 @@ export function ExecutionProgressManager() {
                 <option key={p.id} value={p.id}>
                   {formatPartnerSelectLabel(
                     p,
-                    assignCategory ?? undefined,
+                    noCost ? undefined : (assignCategory ?? undefined),
                     partnerFilterDefinitions,
                   )}
                 </option>
               ))}
             </Select>
 
+            {editCanWaiveCost && (
+              <Checkbox
+                label="비용 없음 (체험단·기자단·인플루언서 등 — 파트너만 배정)"
+                checked={noCost}
+                onChange={(checked) => {
+                  setNoCost(checked);
+                  if (checked) {
+                    setCostLines(emptyCostLines());
+                  } else if (editOrder && partnerId) {
+                    const cat = taskTypeToPartnerCategory(
+                      editOrder.taskType,
+                      data.taskChannels,
+                    );
+                    const partner = partners.find((p) => p.id === partnerId);
+                    if (partner && !partner.categories.includes(cat)) {
+                      setPartnerId("");
+                    }
+                  }
+                }}
+              />
+            )}
+
             <div>
               <p className="mb-2 text-xs font-medium text-zinc-400">
                 비용 항목 (원)
+                {noCost && (
+                  <span className="ml-2 font-normal text-zinc-500">
+                    · 비용 없음으로 처리됩니다
+                  </span>
+                )}
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 {costLines.map((line, idx) => (
@@ -815,22 +1108,26 @@ export function ExecutionProgressManager() {
                     label={WORK_ORDER_COST_LABELS[line.type]}
                     type="number"
                     min={0}
-                    value={line.amount || ""}
+                    disabled={noCost}
+                    value={noCost ? "" : line.amount || ""}
                     onChange={(e) => {
+                      if (noCost) return;
                       const next = [...costLines];
                       next[idx] = {
                         ...line,
                         amount: Number(e.target.value) || 0,
                       };
                       setCostLines(next);
+                      setNoCost(false);
                     }}
                   />
                 ))}
               </div>
               <p className="mt-2 text-sm text-emerald-400">
-                합계{" "}
-                {formatKRW(
-                  costLines.reduce((s, l) => s + (l.amount || 0), 0),
+                {noCost ? (
+                  <span className="text-zinc-400">합계 비용 없음</span>
+                ) : (
+                  <>합계 {formatKRW(editCostTotal)}</>
                 )}
               </p>
             </div>
@@ -845,6 +1142,8 @@ export function ExecutionProgressManager() {
                 disabled={depositBlocked}
                 title={depositBlocked ? workBlockTitle : undefined}
                 onClick={saveDraft}
+                savedAt={draftSaveMeta.savedAt}
+                savedBy={draftSaveMeta.savedBy}
               >
                 임시 저장
               </SaveButton>
@@ -854,7 +1153,7 @@ export function ExecutionProgressManager() {
                 onClick={sendToPartner}
               >
                 <Send className="h-3.5 w-3.5" />
-                파트너 승인 요청
+                {skipPartnerApprovalStages() ? "업무 배정" : "파트너 승인 요청"}
               </Button>
             </div>
           </div>

@@ -124,7 +124,7 @@ export function PostLinksField({
         </div>
       </div>
       <p className="text-[10px] text-zinc-600">
-        링크 입력 시 입력일·완료일 자동 기록 · 마감일 기준 색상 구분
+        링크 입력 시 입력일·완료일 자동 기록 · 업무 1/7회차는 아래 1번째 행 키워드와 연결
       </p>
       <div className="space-y-3">
         {items.map((link, i) => {
@@ -155,6 +155,28 @@ export function PostLinksField({
               value={link.url}
               onChange={(e) => updateUrl(i, e.target.value)}
             />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Input
+                label="타겟 키워드"
+                value={link.keyword ?? ""}
+                onChange={(e) => update(i, { keyword: e.target.value })}
+                placeholder="예: 제주 중문 맛집"
+              />
+              <Input
+                label="검색 순위 (선택)"
+                type="number"
+                min={1}
+                max={100}
+                value={link.searchRank ?? ""}
+                onChange={(e) => {
+                  const raw = e.target.value.trim();
+                  update(i, {
+                    searchRank: raw ? Number.parseInt(raw, 10) : undefined,
+                  });
+                }}
+                placeholder="1~10"
+              />
+            </div>
             <div className="grid gap-2 sm:grid-cols-3">
               <Input
                 label="마감일"
@@ -253,6 +275,11 @@ export function PostLinksCell({
             {link.url.replace(/^https?:\/\//, "").slice(0, 36)}
             {link.url.length > 36 ? "…" : ""}
           </a>
+          {link.keyword && (
+            <span className="rounded-md bg-zinc-950/60 px-2 py-0.5 text-[10px] text-zinc-500">
+              {link.keyword}
+            </span>
+          )}
           <p className={cn("text-[10px]", style.text)}>
             마감 {link.dueDate || "-"} · 완료 {link.completedDate || "-"}
           </p>

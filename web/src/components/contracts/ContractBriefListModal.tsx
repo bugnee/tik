@@ -69,7 +69,7 @@ export function ContractBriefListModal({
                   {getUserName(data, c.assignedStaffId)} ·{" "}
                   {formatKRW(c.monthlyFee)}
                   {referralFee != null && (
-                    <span className="text-rose-400/90">
+                    <span className="text-emerald-400/90">
                       {" "}
                       · 리셀러 수수료 {formatKRW(referralFee)}
                     </span>

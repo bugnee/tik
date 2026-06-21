@@ -73,7 +73,7 @@ function buildPostLinks(
     const linkDue = addDays(execDueDate, -5 + (j % 4));
     links.push({
       id: `pl-c${contractIndex + 1}-${type.slice(0, 3)}-${j + 1}`,
-      url: `https://blog.naver.com/tripit-${contractIndex + 1}-${type}-${j + 1}`,
+      url: `https://blog.naver.com/tripitkorea-${contractIndex + 1}-${type}-${j + 1}`,
       dueDate: linkDue > execDueDate ? execDueDate : linkDue,
       completedDate: enteredAt <= DEMO_TODAY ? enteredAt : "",
       enteredAt,
@@ -557,7 +557,7 @@ function buildAccountProfiles(): AccountProfile[] {
     {
       id: "ap-ceo",
       googleId: "demo-google-ceo",
-      email: "ceo@tripit.co.kr",
+      email: "ceo@tripitkorea.co.kr",
       name: "최대표",
       status: "approved",
       role: "ceo",
@@ -570,7 +570,7 @@ function buildAccountProfiles(): AccountProfile[] {
     {
       id: "ap-exec",
       googleId: "demo-google-exec",
-      email: "exec@tripit.co.kr",
+      email: "exec@tripitkorea.co.kr",
       name: "이서연",
       status: "approved",
       role: "executive",
@@ -583,7 +583,7 @@ function buildAccountProfiles(): AccountProfile[] {
     {
       id: "ap-finance",
       googleId: "demo-google-finance",
-      email: "finance@tripit.co.kr",
+      email: "finance@tripitkorea.co.kr",
       name: "강재무",
       status: "approved",
       role: "finance_manager",
@@ -596,7 +596,7 @@ function buildAccountProfiles(): AccountProfile[] {
     {
       id: "ap-leader",
       googleId: "demo-google-leader",
-      email: "leader@tripit.co.kr",
+      email: "leader@tripitkorea.co.kr",
       name: "박준호",
       status: "approved",
       role: "team_leader",
@@ -609,7 +609,7 @@ function buildAccountProfiles(): AccountProfile[] {
     {
       id: "ap-staff",
       googleId: "demo-google-staff",
-      email: "staff@tripit.co.kr",
+      email: "staff@tripitkorea.co.kr",
       name: "김민지",
       status: "approved",
       role: "staff",
@@ -748,7 +748,7 @@ export function createSeedData(): AppData {
         isFinancialViewer: false,
         teamId: "team-a",
         googleId: "demo-google-leader",
-        email: "leader@tripit.co.kr",
+        email: "leader@tripitkorea.co.kr",
       },
       { id: "u-leader-2", name: "송지원", role: "team_leader", isFinancialViewer: false, teamId: "team-b" },
       {
@@ -757,7 +757,7 @@ export function createSeedData(): AppData {
         role: "executive",
         isFinancialViewer: true,
         googleId: "demo-google-exec",
-        email: "exec@tripit.co.kr",
+        email: "exec@tripitkorea.co.kr",
       },
       {
         id: "u-ceo-1",
@@ -765,7 +765,7 @@ export function createSeedData(): AppData {
         role: "ceo",
         isFinancialViewer: true,
         googleId: "demo-google-ceo",
-        email: "ceo@tripit.co.kr",
+        email: "ceo@tripitkorea.co.kr",
       },
       {
         id: "u-finance-1",
@@ -773,7 +773,7 @@ export function createSeedData(): AppData {
         role: "finance_manager",
         isFinancialViewer: true,
         googleId: "demo-google-finance",
-        email: "finance@tripit.co.kr",
+        email: "finance@tripitkorea.co.kr",
       },
       {
         id: "u-partner-1",
@@ -838,6 +838,7 @@ export function createSeedData(): AppData {
       DEMO_TODAY,
       MONTH_START,
     ),
+    contractTermsApprovals: [],
     bonusPayments: buildBonusPayments(contracts, bonusPolicy),
     bonusPolicy,
     fundBudget: {
@@ -847,7 +848,7 @@ export function createSeedData(): AppData {
       operatingReserve: 6_650_000,
       clientDepositBankName: "국민은행",
       clientDepositAccountNumber: "737801-04-203835",
-      clientDepositAccountHolder: "주식회사 트립잇코리아",
+      clientDepositAccountHolder: "(주)TripItKorea",
     },
     contractRecords,
     contractMemos,
@@ -947,6 +948,57 @@ function buildDetailedExperienceCampaigns(): ExperienceCampaign[] {
         notes: "평일 오후 선호",
       },
       schedulingStatus: "recruiting",
+      publicListing: {
+        visible: true,
+        channel: "blog",
+        deliveryType: "visit",
+        regionLabel: "[제주/제주시]",
+        displayTitle: "[제주/제주시] 1차 체험단",
+        deadlineAt: "2026-07-04T23:59:59.000Z",
+        isPremium: false,
+        publishedAt: addDays(MONTH_START, 2),
+        publishedByUserId: "u-staff-3",
+        detail: {
+          hostName: "제주 흑돼지 전문점",
+          providedService: "2인 코스 제공 + 주차 지원",
+          benefitAmountLabel: "50,000원",
+          thumbnailUrl:
+            "https://images.unsplash.com/photo-1544025162-d76694265947?w=800&auto=format&fit=crop",
+          address: "제주특별자치도 제주시 연동 123-4",
+          visitReservationLines: [
+            "방문 가능: 평일 14:00~20:00",
+            "예약 필수 · 전화 또는 Q&A로 문의",
+          ],
+          keywords: ["제주 맛집", "제주 흑돼지", "제주시 맛집"],
+          participationSteps: [
+            "STEP 1. 체험단 조건·미션을 확인하세요.",
+            "STEP 2. 방문 가능 일정을 선택하세요.",
+            "STEP 3. 신청하기로 지원하세요.",
+          ],
+          mission: {
+            minPhotos: 10,
+            minWords: 300,
+            requireMapLink: true,
+            requireSponsorshipNote: true,
+            requireKeywords: true,
+            items: [
+              { id: "blog", label: "네이버 블로그 리뷰" },
+              { id: "photo", label: "사진 10장 이상" },
+              { id: "story", label: "인스타 스토리" },
+            ],
+          },
+          checklist: [
+            "선정 후 무단 취소 불가",
+            "리뷰 6개월 이상 유지",
+          ],
+          availableVisitDates: [
+            "2026-06-22",
+            "2026-06-23",
+            "2026-06-24",
+            "2026-06-25",
+          ],
+        },
+      },
       proposals: [
         {
           id: "esp-1",
@@ -1045,7 +1097,7 @@ function buildPostLinkOpinions(): PostLinkOpinion[] {
       id: "plo-1",
       contractId: "c-1",
       linkId: "pl-c1-opt-1",
-      linkUrl: "https://blog.naver.com/tripit-1-optimized-1",
+      linkUrl: "https://blog.naver.com/tripitkorea-1-optimized-1",
       channel: "최적블로그",
       reportSource: "실행 진행",
       executionType: "optimized",

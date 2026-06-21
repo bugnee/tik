@@ -113,7 +113,7 @@ export function buildStaffUsers(): User[] {
     teamId: TEAM_IDS[i % TEAM_IDS.length],
     ...(i === 0 && {
       googleId: "demo-google-staff",
-      email: "staff@tripit.co.kr",
+      email: "staff@tripitkorea.co.kr",
     }),
   }));
 }
@@ -282,7 +282,7 @@ function stageTimestamps(
       postLinks: [
         {
           id: `pl-${contract.id}-${workStart}`,
-          url: `https://blog.naver.com/tripit-${contract.id}-${workStart.slice(8)}`,
+          url: `https://blog.naver.com/tripitkorea-${contract.id}-${workStart.slice(8)}`,
           dueDate: contract.contractEndDate,
           completedDate: deliveredAt,
           enteredAt: deliveredAt,
@@ -302,7 +302,7 @@ function stageTimestamps(
       postLinks: [
         {
           id: `pl-done-${contract.id}-${workStart}`,
-          url: `https://blog.naver.com/tripit-done-${contract.id}`,
+          url: `https://blog.naver.com/tripitkorea-done-${contract.id}`,
           dueDate: contract.contractEndDate,
           completedDate: paidAt,
           enteredAt: paidAt,
@@ -409,7 +409,7 @@ export function buildClientUsersFromContracts(contracts: Contract[]): User[] {
         role: "client" as const,
         isFinancialViewer: false,
         contractId: c.id,
-        email: demo?.email ?? `portal-${num}@demo.tripit.kr`,
+        email: demo?.email ?? `portal-${num}@demo.tripitkorea.co.kr`,
         ...(demo?.googleId && { googleId: demo.googleId }),
       };
     });
@@ -671,7 +671,7 @@ export function buildScaledExperienceCampaigns(
           memo: pi % 2 === 0 ? "평일 가능" : "주말 가능",
           postUrl:
             status === "completed" && pi < 2
-              ? `https://blog.naver.com/tripit-exp-${contract.id}-${pi}`
+              ? `https://blog.naver.com/tripitkorea-exp-${contract.id}-${pi}`
               : undefined,
           postRegisteredAt:
             status === "completed" && pi < 2

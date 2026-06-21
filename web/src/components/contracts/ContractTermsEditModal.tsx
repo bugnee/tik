@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
 import { useFormDirty } from "@/hooks/useFormDirty";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Checkbox, Input, Select } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
 import { LeaderManagedContractNotice } from "@/components/contracts/LeaderManagedContractNotice";
@@ -16,6 +17,14 @@ import {
   canEnableExtensionContractCheckbox,
   contractToTermsForm,
 } from "@/lib/contract-terms-utils";
+import {
+  formatChangedFieldsSummary,
+  getChangedFieldHighlightClass,
+  getChangedFieldWrapperClass,
+  getTermsFormChangedFields,
+  requiresTermsApproval,
+  TERMS_MODE_LABELS,
+} from "@/lib/contract-terms-approval-utils";
 import { addDays } from "@/lib/bonus-utils";
 import { isLeaderManagedAssignee } from "@/lib/contract-access-utils";
 import { filterPartnersByCategory, getPartnerName } from "@/lib/partner-utils";
@@ -25,34 +34,64 @@ import {
   setContractTargetCount,
 } from "@/lib/task-channel-utils";
 import { contractAssigneeUsers } from "@/lib/selectors";
-import type { Contract } from "@/lib/types";
+import type { Contract, ContractTermsApproval, UserRole } from "@/lib/types";
 
 type ContractTermsEditModalProps = {
   contract: Contract;
   open: boolean;
   onClose: () => void;
   mode: ContractTermsChangeMode;
+  activeRole: UserRole;
+  pendingApproval?: ContractTermsApproval;
   onSave: (values: ContractTermsFormValues, mode: ContractTermsChangeMode) => void;
+  onRequestApproval?: (
+    values: ContractTermsFormValues,
+    mode: ContractTermsChangeMode,
+  ) => void;
 };
+
+function buildInitialForm(
+  contract: Contract,
+  mode: ContractTermsChangeMode,
+): ContractTermsFormValues {
+  const base = contractToTermsForm(contract);
+  if (mode === "recontract") {
+    const start = new Date().toISOString().slice(0, 10);
+    return {
+      ...base,
+      contractStartDate: start,
+      contractEndDate: addDays(start, 365),
+      isExtension: false,
+    };
+  }
+  return base;
+}
 
 export function ContractTermsEditModal({
   contract,
   open,
   onClose,
   mode,
+  activeRole,
+  pendingApproval,
   onSave,
+  onRequestApproval,
 }: ContractTermsEditModalProps) {
   const data = useData();
   const { canManageContractTerms } = useRole();
   const { teams, partners, taskChannels } = data;
+  const [baselineForm, setBaselineForm] = useState<ContractTermsFormValues>(() =>
+    buildInitialForm(contract, mode),
+  );
   const [form, setForm] = useState<ContractTermsFormValues>(() =>
-    contractToTermsForm(contract),
+    buildInitialForm(contract, mode),
   );
   const formDirty = useFormDirty(
     open,
     `${contract.id}-${mode}`,
     form,
   );
+  const saveMeta = useSaveMeta();
 
   const assignees = useMemo(
     () => contractAssigneeUsers(data, form.teamId || undefined),
@@ -71,26 +110,48 @@ export function ContractTermsEditModal({
     [partners],
   );
 
+  const changedFields = useMemo(
+    () => getTermsFormChangedFields(baselineForm, form, taskChannels),
+    [baselineForm, form, taskChannels],
+  );
+  const changedFieldSet = useMemo(
+    () => new Set(changedFields),
+    [changedFields],
+  );
+
+  const needsApproval = useMemo(
+    () =>
+      requiresTermsApproval(
+        activeRole,
+        mode,
+        contract,
+        baselineForm,
+        form,
+        taskChannels,
+      ),
+    [activeRole, mode, contract, baselineForm, form, taskChannels],
+  );
+
+  const isPending = pendingApproval?.status === "pending";
+
   useEffect(() => {
     if (open) {
-      const base = contractToTermsForm(contract);
-      if (mode === "recontract") {
-        const start = new Date().toISOString().slice(0, 10);
-        setForm({
-          ...base,
-          contractStartDate: start,
-          contractEndDate: addDays(start, 365),
-          isExtension: false,
-        });
-      } else {
-        setForm(base);
-      }
+      const initial = buildInitialForm(contract, mode);
+      setBaselineForm(initial);
+      setForm(initial);
     }
   }, [open, contract, mode]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSave(form, mode);
+    if (isPending) return;
+
+    if (needsApproval && onRequestApproval) {
+      onRequestApproval(form, mode);
+    } else {
+      onSave(form, mode);
+    }
+    saveMeta.recordSave();
     onClose();
   }
 
@@ -107,12 +168,44 @@ export function ContractTermsEditModal({
         ? "새 회차 조건 적용 · 재계약 월차 +1 · 입금 확인 초기화"
         : "진행 중 계약의 월 광고비 · 집행 목표 · 기간 등 수정";
 
+  const submitLabel = isPending
+    ? "승인 대기 중"
+    : needsApproval
+      ? "결재 상신"
+      : mode === "recontract"
+        ? "재계약 적용"
+        : mode === "renewal"
+          ? "재계약 조건 적용"
+          : "조건 저장";
+
   return (
     <Modal open={open} onClose={onClose} title={title} size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
         <p className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-500">
           {subtitle}
         </p>
+
+        {isPending && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+            <Badge variant="warning" className="mr-2">
+              승인 대기
+            </Badge>
+            {TERMS_MODE_LABELS[pendingApproval.mode]} 결재가 진행 중입니다. (
+            {pendingApproval.createdAt} 상신)
+          </div>
+        )}
+
+        {changedFields.length > 0 && !isPending && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200/90">
+            <span className="font-medium text-amber-300">변경된 항목: </span>
+            {formatChangedFieldsSummary(changedFields, taskChannels)}
+            {needsApproval && (
+              <span className="mt-1 block text-amber-400/80">
+                팀장 결재 후 반영됩니다.
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="rounded-lg border border-zinc-800 bg-zinc-950/30 px-3 py-2 text-sm text-zinc-300">
           {contract.clientName}
@@ -138,6 +231,9 @@ export function ContractTermsEditModal({
             onChange={(e) =>
               setForm({ ...form, monthlyFee: Number(e.target.value) })
             }
+            className={getChangedFieldHighlightClass(
+              changedFieldSet.has("monthlyFee"),
+            )}
             required
           />
           <Select
@@ -156,6 +252,9 @@ export function ContractTermsEditModal({
                   : (nextAssignees[0]?.id ?? prev.assignedStaffId),
               }));
             }}
+            className={getChangedFieldHighlightClass(
+              changedFieldSet.has("teamId"),
+            )}
           >
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
@@ -171,6 +270,9 @@ export function ContractTermsEditModal({
           onChange={(e) =>
             setForm({ ...form, assignedStaffId: e.target.value })
           }
+          className={getChangedFieldHighlightClass(
+            changedFieldSet.has("assignedStaffId"),
+          )}
         >
           {assignees.map((u) => (
             <option key={u.id} value={u.id}>
@@ -202,6 +304,9 @@ export function ContractTermsEditModal({
                   (prev.isExtension ?? false),
               }));
             }}
+            className={getChangedFieldHighlightClass(
+              changedFieldSet.has("contractStartDate"),
+            )}
           />
           <Input
             label={mode === "renewal" ? "재계약 종료일" : "계약 종료일"}
@@ -210,6 +315,9 @@ export function ContractTermsEditModal({
             onChange={(e) =>
               setForm({ ...form, contractEndDate: e.target.value })
             }
+            className={getChangedFieldHighlightClass(
+              changedFieldSet.has("contractEndDate"),
+            )}
           />
         </div>
 
@@ -230,54 +338,79 @@ export function ContractTermsEditModal({
                   ),
                 )
               }
+              className={getChangedFieldHighlightClass(
+                changedFieldSet.has(`channel:${channel.id}`),
+              )}
             />
           ))}
         </div>
 
-        <Checkbox
-          label="플레이스세팅 포함"
-          checked={form.hasPlaceSetting}
-          onChange={(v) => setForm({ ...form, hasPlaceSetting: v })}
-        />
+        <div
+          className={getChangedFieldWrapperClass(
+            changedFieldSet.has("hasPlaceSetting"),
+          )}
+        >
+          <Checkbox
+            label="플레이스세팅 포함"
+            checked={form.hasPlaceSetting}
+            onChange={(v) => setForm({ ...form, hasPlaceSetting: v })}
+          />
+        </div>
 
         {canManageContractTerms && (
           <div className="flex flex-wrap gap-6 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
             <p className="w-full text-xs text-amber-400/80">
               임원 · 대표 전용 설정
             </p>
-            <ExtensionContractCheckboxField
-              contractStartDate={form.contractStartDate}
-              checked={form.isExtension ?? false}
-              onChange={(isExtension) => setForm({ ...form, isExtension })}
-            />
-            <Checkbox
-              label="리셀러 프로모션 (10%)"
-              checked={form.hasReferralPromo ?? false}
-              onChange={(v) =>
-                setForm({
-                  ...form,
-                  hasReferralPromo: v,
-                  referrerPartnerId: v
-                    ? form.referrerPartnerId ?? referralPartners[0]?.id
-                    : undefined,
-                })
-              }
-            />
-            {form.hasReferralPromo && (
-              <Select
-                label="리셀러"
-                value={form.referrerPartnerId ?? referralPartners[0]?.id ?? ""}
-                onChange={(e) =>
-                  setForm({ ...form, referrerPartnerId: e.target.value })
+            <div
+              className={getChangedFieldWrapperClass(
+                changedFieldSet.has("isExtension"),
+              )}
+            >
+              <ExtensionContractCheckboxField
+                contractStartDate={form.contractStartDate}
+                checked={form.isExtension ?? false}
+                onChange={(isExtension) => setForm({ ...form, isExtension })}
+              />
+            </div>
+            <div
+              className={getChangedFieldWrapperClass(
+                changedFieldSet.has("hasReferralPromo") ||
+                  changedFieldSet.has("referrerPartnerId"),
+              )}
+            >
+              <Checkbox
+                label="리셀러 프로모션 (10%)"
+                checked={form.hasReferralPromo ?? false}
+                onChange={(v) =>
+                  setForm({
+                    ...form,
+                    hasReferralPromo: v,
+                    referrerPartnerId: v
+                      ? form.referrerPartnerId ?? referralPartners[0]?.id
+                      : undefined,
+                  })
                 }
-              >
-                {referralPartners.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.companyName}
-                  </option>
-                ))}
-              </Select>
-            )}
+              />
+              {form.hasReferralPromo && (
+                <Select
+                  label="리셀러"
+                  value={form.referrerPartnerId ?? referralPartners[0]?.id ?? ""}
+                  onChange={(e) =>
+                    setForm({ ...form, referrerPartnerId: e.target.value })
+                  }
+                  className={getChangedFieldHighlightClass(
+                    changedFieldSet.has("referrerPartnerId"),
+                  )}
+                >
+                  {referralPartners.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.companyName}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </div>
           </div>
         )}
 
@@ -299,12 +432,14 @@ export function ContractTermsEditModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             취소
           </Button>
-          <SaveButton type="submit" dirty={formDirty}>
-            {mode === "recontract"
-              ? "재계약 적용"
-              : mode === "renewal"
-                ? "재계약 조건 적용"
-                : "조건 저장"}
+          <SaveButton
+            type="submit"
+            dirty={formDirty}
+            savedAt={saveMeta.savedAt}
+            savedBy={saveMeta.savedBy}
+            disabled={isPending}
+          >
+            {submitLabel}
           </SaveButton>
         </div>
       </form>

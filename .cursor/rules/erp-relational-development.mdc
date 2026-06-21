@@ -1,0 +1,61 @@
+---
+description: TripItKorea ERP — 관계형 무결성·신입 실무 가능 개발 규칙
+globs:
+  - web/**/*
+  - packages/shared/**/*
+alwaysApply: true
+---
+
+# TripItKorea ERP 개발 원칙
+
+## 1. 신입도 시스템만으로 실무 가능
+
+- 모든 업무 흐름은 **화면·대시보드·다음 행동 힌트**로 안내한다 (매뉴얼 PDF 의존 금지).
+- 역할별 가이드: `web/src/lib/role-onboarding-utils.ts`, `RoleOnboardingPanel`
+- 표준 흐름: `standard-contract-workflow.ts`, `StaffDailyActionsPanel`
+- 새 기능 추가 시 **해당 역할 대시보드·PendingActions·Navbar 배지**에 반영할 것.
+
+## 2. 관계형 수정 — 반드시 연쇄 반영
+
+**단일 파일만 고치지 말 것.** 변경 전 `web/src/core/domain/entity-relations.ts` 확인.
+
+### 핵심 관계 (Contract 중심)
+
+```
+Team → User → Contract (assignedStaffId, teamId)
+Contract → Execution, WorkOrder, Expense, QaThread, ExperienceCampaign, BonusPayment, ...
+WorkOrder → Partner (partnerId), Contract (contractId)
+QaThread → QaMessage (threadId)
+ExperienceCampaign → experiencePartnerSlots, experienceParticipationProposals
+Partner → WorkOrder, Expense, partnerReferralLeads, Contract.referrerPartnerId
+```
+
+### 엔티티 변경 시 체크리스트
+
+| 변경 대상 | 함께 수정할 파일/영역 |
+|-----------|----------------------|
+| Contract 필드/삭제 | `entity-relations.ts`, `cascade-delete.ts`, `DataContext`, `selectors`, `role-action-utils`, 입금·워크오더 차단 로직 |
+| WorkOrder stage/필드 | `work-order-utils.ts`, `staff-daily-workflow-utils.ts`, `standard-contract-workflow.ts`, `ExecutionProgressManager`, 파트너·재무 연동 |
+| Partner 삭제/변경 | `cascade-delete.ts` (`purgePartnerFromAppData`), `DataContext.deletePartner`, `workOrders`·`expenses` FK |
+| QaThread/Message | `place-qa-utils.ts`, `StaffDailyActionsPanel`, `getQaThreadIdsForContract` |
+| ExperienceCampaign | `mapper.ts`(공개 포털), `entity-relations`, cascade |
+| 역할·권한 | `selectors.ts`, `role-action-utils.ts`, `dashboard-role-layout.ts`, `nav-config.ts` |
+
+### 삭제(cascade) 규칙
+
+- 계약 삭제: **`purgeContractFromAppData`** 만 사용 (`cascade-delete.ts`)
+- 파트너 삭제: **`purgePartnerFromAppData`** 만 사용
+- UI·store에서 filter만 하고 cascade 헬퍼를 우회하지 말 것
+
+## 3. 코딩 규칙
+
+- FK 필드명은 `entity-relations.ts`의 `FK` 상수와 일치
+- 새 AppData 컬렉션 추가 시 `CONTRACT_CHILD_COLLECTIONS`·cascade·seed·types 동시 갱신
+- 주석은 한국어, 비즈니스 규칙(입금 차단·지급 조건)은 utils에 단일 진실 공급원으로
+- 공개 포털(`web-public`)은 ERP 완료 후 본격 연동 — ERP 변경 시 shared 타입만 선행 수정 가능
+
+## 4. 검증
+
+- 관련 역할 대시보드에서 UI 흐름 확인
+- `grep`으로 FK·cascade 누락 검색 (예: `contractId` 필터만 있고 cascade 없는 delete)
+- build:erp 통과

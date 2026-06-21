@@ -257,7 +257,7 @@ function buildExtendedOperationalRows(): OperationalRow[] {
     const date = addDaysIso("2026-05-28", dayOffset);
     rows.push({
       date,
-      url: `https://m.blog.naver.com/tripit-oseong/${224320000000 + i}`,
+      url: `https://m.blog.naver.com/tripitkorea-oseong/${224320000000 + i}`,
       keyword: EXTRA_KEYWORD_POOL[i % EXTRA_KEYWORD_POOL.length]!,
       ...(i % 4 === 0 ? { searchRank: 1 + (i % 7) } : {}),
     });

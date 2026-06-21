@@ -1,6 +1,8 @@
 "use client";
 
 import { Input } from "@/components/ui/FormFields";
+import { MonthPickerInput } from "@/components/ui/MonthPickerInput";
+import { DatePickerInput } from "@/components/ui/DatePickerInput";
 import { cn } from "@/lib/cn";
 import { getTabButtonClass } from "@/lib/tab-ui-utils";
 import type { TaskChannelAccent } from "@/lib/types";
@@ -74,20 +76,18 @@ export function PeriodFilterBar({
 
       <div className="flex flex-wrap items-end gap-3">
         {value.mode === "day" && (
-          <Input
+          <DatePickerInput
             label="일자"
-            type="date"
             value={value.day}
-            onChange={(e) => patch({ day: e.target.value })}
-            className="w-44"
+            onChange={(day) => patch({ day })}
+            className="w-auto min-w-[16rem]"
           />
         )}
         {value.mode === "month" && (
-          <Input
+          <MonthPickerInput
             label="월"
-            type="month"
             value={value.month}
-            onChange={(e) => patch({ month: e.target.value })}
+            onChange={(month) => patch({ month })}
             className="w-44"
           />
         )}
@@ -105,19 +105,17 @@ export function PeriodFilterBar({
         )}
         {value.mode === "range" && (
           <>
-            <Input
+            <DatePickerInput
               label="시작일"
-              type="date"
               value={value.rangeFrom}
-              onChange={(e) => patch({ rangeFrom: e.target.value })}
-              className="w-44"
+              onChange={(rangeFrom) => patch({ rangeFrom })}
+              className="w-auto min-w-[16rem]"
             />
-            <Input
+            <DatePickerInput
               label="종료일"
-              type="date"
               value={value.rangeTo}
-              onChange={(e) => patch({ rangeTo: e.target.value })}
-              className="w-44"
+              onChange={(rangeTo) => patch({ rangeTo })}
+              className="w-auto min-w-[16rem]"
             />
           </>
         )}

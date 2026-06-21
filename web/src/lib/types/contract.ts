@@ -120,3 +120,40 @@ export interface ExtensionApproval {
   status: "pending" | "approved" | "rejected";
   createdAt: string;
 }
+
+/** 계약 조건 변경 결재 — 제안값 (ContractTermsFormValues와 동일 필드) */
+export type ContractTermsProposedValues = Pick<
+  Contract,
+  | "monthlyFee"
+  | "contractStartDate"
+  | "contractEndDate"
+  | "hasPlaceSetting"
+  | "assignedStaffId"
+  | "teamId"
+  | "targetOptimized"
+  | "targetInfluencer"
+  | "targetExperience"
+  | "targetInstaCard"
+  | "targetYoutube"
+  | "targetInstagram"
+  | "targetClip"
+  | "targetTiktok"
+> & {
+  channelTargets?: Record<string, number>;
+  isExtension?: boolean;
+  hasReferralPromo?: boolean;
+  referrerPartnerId?: string;
+};
+
+/** 재계약·조건 변경 팀장 결재 */
+export interface ContractTermsApproval {
+  id: string;
+  contractId: string;
+  requestedBy: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+  mode: "amend" | "renewal" | "recontract";
+  proposedValues: ContractTermsProposedValues;
+  reviewedBy?: string;
+  reviewedAt?: string;
+}

@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { DashboardHeader } from "@/components/dashboard/StaffDashboard";
+import { RoleOnboardingPanel } from "@/components/dashboard/RoleOnboardingPanel";
 import { DashboardBonusSection } from "@/components/dashboard/DashboardBonusSection";
 import { ExtensionBonusDetailModal } from "@/components/dashboard/ExtensionBonusDetailModal";
 import { BonusApprovalPanel } from "@/components/bonus/BonusApprovalPanel";
@@ -110,6 +111,8 @@ export function ExecutiveDashboard() {
         title="임원 대시보드"
         description={`${periodLabel} · 산하 팀 매출 기여도 · 연장 계약 현황`}
       />
+
+      <RoleOnboardingPanel />
 
       <StaffWorkConfirmPanel />
 

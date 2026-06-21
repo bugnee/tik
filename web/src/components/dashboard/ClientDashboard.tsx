@@ -683,7 +683,7 @@ export function ClientDashboard({
       )}
 
       <p className="text-center text-xs text-zinc-600">
-        TRIP IT KOREA · {managerName} · {getTeamName(data, contract.teamId)}
+        트립잇코리아 · {managerName} · {getTeamName(data, contract.teamId)}
       </p>
     </div>
   );

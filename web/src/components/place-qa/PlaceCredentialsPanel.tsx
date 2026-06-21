@@ -7,6 +7,7 @@ import { usePlaceQa } from "@/features/place-qa/usePlaceQa";
 import { useRole } from "@/context/RoleContext";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/FormFields";
 import {
@@ -41,6 +42,14 @@ export function PlaceCredentialsPanel({ contractId }: { contractId: string }) {
     { placeUrl, loginId, password },
     savedSnapshot,
   );
+  const saveMeta = useSaveMeta(
+    existing
+      ? {
+          savedAt: existing.updatedAt,
+          savedByUserId: existing.updatedByUserId,
+        }
+      : null,
+  );
 
   useEffect(() => {
     setPlaceUrl(existing?.placeUrl ?? "");
@@ -52,6 +61,7 @@ export function PlaceCredentialsPanel({ contractId }: { contractId: string }) {
     e.preventDefault();
     if (!canEdit) return;
     upsertPlaceCredentials(contractId, { placeUrl, loginId, password }, currentUser.id);
+    saveMeta.recordSave();
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2000);
   }
@@ -107,17 +117,17 @@ export function PlaceCredentialsPanel({ contractId }: { contractId: string }) {
             />
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <SaveButton type="submit" dirty={isDirty}>
+            <SaveButton
+              type="submit"
+              dirty={isDirty}
+              savedAt={saveMeta.savedAt}
+              savedBy={saveMeta.savedBy}
+            >
               <Save className="h-4 w-4" />
               저장
             </SaveButton>
             {saved && (
               <span className="text-sm text-emerald-400">저장되었습니다.</span>
-            )}
-            {existing && (
-              <span className="text-xs text-zinc-600">
-                최종 수정 {existing.updatedAt}
-              </span>
             )}
           </div>
         </form>

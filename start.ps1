@@ -1,4 +1,4 @@
-# TripIt Korea 서버 시작 (PATH 미설정 터미널용)
+# TripItKorea 서버 시작 (PATH 미설정 터미널용)
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ProjectRoot
 

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { RoleBadge } from "@/components/ui/RoleBadge";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Card, CardHeader } from "@/components/ui/Card";
 import {
   DataTable,
@@ -67,6 +68,8 @@ export function UsersManager() {
     editingTeam?.id ?? "create",
     teamForm,
   );
+  const userSaveMeta = useSaveMeta();
+  const teamSaveMeta = useSaveMeta();
 
   function openUserCreate() {
     setEditingUser(null);
@@ -107,6 +110,7 @@ export function UsersManager() {
     }
     if (editingUser) updateUser(editingUser.id, userForm);
     else addUser(userForm);
+    userSaveMeta.recordSave();
     setUserModal(false);
   }
 
@@ -130,6 +134,7 @@ export function UsersManager() {
     if (!teamForm.name) return;
     if (editingTeam) updateTeam(editingTeam.id, teamForm);
     else addTeam(teamForm);
+    teamSaveMeta.recordSave();
     setTeamModal(false);
   }
 
@@ -432,7 +437,12 @@ export function UsersManager() {
             <Button type="button" variant="secondary" onClick={() => setUserModal(false)}>
               취소
             </Button>
-            <SaveButton type="submit" dirty={userFormDirty}>
+            <SaveButton
+              type="submit"
+              dirty={userFormDirty}
+              savedAt={userSaveMeta.savedAt}
+              savedBy={userSaveMeta.savedBy}
+            >
               {editingUser ? "저장" : "추가"}
             </SaveButton>
           </div>
@@ -481,7 +491,12 @@ export function UsersManager() {
             <Button type="button" variant="secondary" onClick={() => setTeamModal(false)}>
               취소
             </Button>
-            <SaveButton type="submit" dirty={teamFormDirty}>
+            <SaveButton
+              type="submit"
+              dirty={teamFormDirty}
+              savedAt={teamSaveMeta.savedAt}
+              savedBy={teamSaveMeta.savedBy}
+            >
               {editingTeam ? "저장" : "추가"}
             </SaveButton>
           </div>

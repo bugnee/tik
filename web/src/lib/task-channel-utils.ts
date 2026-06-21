@@ -23,6 +23,33 @@ export const TASK_CHANNEL_BADGE_CLASSES: Record<TaskChannelAccent, string> = {
   lime: "bg-lime-500/15 text-lime-400 ring-1 ring-lime-500/30",
 };
 
+/** KPI 스트립 — 채널별 카드 테두리·배경 */
+export const TASK_CHANNEL_KPI_CHIP_CLASSES: Record<TaskChannelAccent, string> = {
+  cyan: "border-cyan-500/35 bg-cyan-500/10",
+  emerald: "border-emerald-500/35 bg-emerald-500/10",
+  violet: "border-violet-500/35 bg-violet-500/10",
+  fuchsia: "border-fuchsia-500/35 bg-fuchsia-500/10",
+  amber: "border-amber-500/35 bg-amber-500/10",
+  orange: "border-orange-500/35 bg-orange-500/10",
+  rose: "border-rose-500/35 bg-rose-500/10",
+  sky: "border-sky-500/35 bg-sky-500/10",
+  lime: "border-lime-500/35 bg-lime-500/10",
+};
+
+/** KPI 스트립 — 채널별 달성 수치 색 */
+export const TASK_CHANNEL_KPI_VALUE_CLASSES: Record<TaskChannelAccent, string> =
+  {
+    cyan: "text-cyan-400",
+    emerald: "text-emerald-400",
+    violet: "text-violet-400",
+    fuchsia: "text-fuchsia-400",
+    amber: "text-amber-400",
+    orange: "text-orange-400",
+    rose: "text-rose-400",
+    sky: "text-sky-400",
+    lime: "text-lime-400",
+  };
+
 export const TASK_CHANNEL_ACCENT_LABELS: Record<TaskChannelAccent, string> = {
   cyan: "시안",
   emerald: "에메랄드",
@@ -57,7 +84,7 @@ const DEFAULT_CHANNEL_ACCENTS: Record<string, TaskChannelAccent> = {
   clip: "lime",
   tiktok: "emerald",
   press: "sky",
-  referral: "rose",
+  referral: "sky",
 };
 
 /** SNS·숏폼 집행 채널 — 인플루언서 유형으로 매핑 (파트너 분야는 채널별 ID) */
@@ -300,6 +327,17 @@ export function getTaskChannelBadgeClassName(
   taskType: string,
 ): string {
   return TASK_CHANNEL_BADGE_CLASSES[getTaskChannelAccent(channels, taskType)];
+}
+
+export function getTaskChannelKpiChipClasses(
+  channels: TaskChannelDefinition[],
+  taskType: string,
+): { chip: string; value: string } {
+  const accent = getTaskChannelAccent(channels, taskType);
+  return {
+    chip: TASK_CHANNEL_KPI_CHIP_CLASSES[accent],
+    value: TASK_CHANNEL_KPI_VALUE_CLASSES[accent],
+  };
 }
 
 export function getExecutionTypeBadgeClassName(

@@ -6,7 +6,7 @@ import type { AccountProfile, User, UserRole } from "@/lib/types";
 
 
 
-export const MOCK_AUTH_STORAGE_KEY = "tripit-mock-auth";
+export const MOCK_AUTH_STORAGE_KEY = "tripitkorea-mock-auth";
 
 
 
@@ -308,7 +308,7 @@ export const DEMO_GOOGLE_ACCOUNTS: DemoGoogleAccount[] = [
 
     googleId: "demo-google-ceo",
 
-    email: "ceo@tripit.co.kr",
+    email: "ceo@tripitkorea.co.kr",
 
     name: "최대표",
 
@@ -322,7 +322,7 @@ export const DEMO_GOOGLE_ACCOUNTS: DemoGoogleAccount[] = [
 
     googleId: "demo-google-exec",
 
-    email: "exec@tripit.co.kr",
+    email: "exec@tripitkorea.co.kr",
 
     name: "이서연",
 
@@ -336,7 +336,7 @@ export const DEMO_GOOGLE_ACCOUNTS: DemoGoogleAccount[] = [
 
     googleId: "demo-google-finance",
 
-    email: "finance@tripit.co.kr",
+    email: "finance@tripitkorea.co.kr",
 
     name: "강재무",
 
@@ -350,7 +350,7 @@ export const DEMO_GOOGLE_ACCOUNTS: DemoGoogleAccount[] = [
 
     googleId: "demo-google-leader",
 
-    email: "leader@tripit.co.kr",
+    email: "leader@tripitkorea.co.kr",
 
     name: "박준호",
 
@@ -364,7 +364,7 @@ export const DEMO_GOOGLE_ACCOUNTS: DemoGoogleAccount[] = [
 
     googleId: "demo-google-staff",
 
-    email: "staff@tripit.co.kr",
+    email: "staff@tripitkorea.co.kr",
 
     name: "김민지",
 

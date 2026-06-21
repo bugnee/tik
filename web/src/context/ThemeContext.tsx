@@ -11,7 +11,7 @@ import {
 
 export type ThemeMode = "dark" | "light";
 
-const STORAGE_KEY = "tripit-theme";
+const STORAGE_KEY = "tripitkorea-theme";
 
 type ThemeContextValue = {
   theme: ThemeMode;

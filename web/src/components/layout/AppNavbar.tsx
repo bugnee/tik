@@ -54,7 +54,7 @@ export function AppNavbar() {
           </div>
           <div className="hidden sm:block">
             <p className="text-sm font-bold tracking-tight text-[var(--foreground)]">
-              TRIP IT KOREA
+              TripItKorea
             </p>
             <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[var(--muted)]">
               {activeRole === "client" ? "Client Portal" : "ERP · Settlement"}

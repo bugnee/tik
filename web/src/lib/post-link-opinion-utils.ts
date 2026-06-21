@@ -1,4 +1,5 @@
 import type { AppData, PostLinkOpinion, UserRole } from "./types";
+import type { PostLinkEntry } from "./types/execution";
 import { canAccessQaContract } from "./place-qa-utils";
 import { getUserName } from "./selectors";
 
@@ -21,6 +22,22 @@ export function getPostLinkOpinionsForLink(
 ): PostLinkOpinion[] {
   return getPostLinkOpinionsForContract(data, contractId).filter(
     (o) => o.linkId === linkId,
+  );
+}
+
+/** 건당 업무 타임라인 — 링크 ID·URL 기준 의견 매칭 */
+export function getPostLinkOpinionsForWorkOrderLink(
+  data: AppData,
+  contractId: string,
+  orderId: string,
+  link: Pick<PostLinkEntry, "id" | "url">,
+): PostLinkOpinion[] {
+  const url = link.url?.trim();
+  return getPostLinkOpinionsForContract(data, contractId).filter(
+    (o) =>
+      o.linkId === link.id ||
+      o.linkId === `${orderId}-${link.id}` ||
+      (url.length > 0 && o.linkUrl === url),
   );
 }
 

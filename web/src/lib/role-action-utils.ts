@@ -14,10 +14,16 @@ import {
   getFinancePayoutQueue,
   getPendingExpensePayoutApprovals,
 } from "@/lib/expense-payout-utils";
+import { getPartnerCollaborationContractIds } from "@/lib/partner-collaboration-utils";
 import {
   getPartnerApprovedWorkOrders,
   getPartnerPendingApprovalOrders,
 } from "@/lib/partner-work-queue-utils";
+import { PARTNER_SELF_SERVICE_WORKFLOW_ENABLED } from "@/lib/partner-workflow-config";
+import {
+  getPartnerByUserId,
+  partnerHasCategory,
+} from "@/lib/partner-utils";
 import {
   getQaDashboardStats,
   getVisibleContractIds,
@@ -197,23 +203,47 @@ export function getRoleActionItems(
     case "partner": {
       const partnerId = data.users.find((user) => user.id === userId)?.partnerId;
       if (!partnerId) break;
-      const pending = getPartnerPendingApprovalOrders(data, partnerId).length;
-      if (pending > 0) {
-        items.push({
-          id: "partner-approve",
-          label: "실행 승인 대기",
-          count: pending,
-          href: "/dashboard",
-        });
+
+      if (PARTNER_SELF_SERVICE_WORKFLOW_ENABLED) {
+        const pending = getPartnerPendingApprovalOrders(data, partnerId).length;
+        if (pending > 0) {
+          items.push({
+            id: "partner-approve",
+            label: "실행 승인 대기",
+            count: pending,
+            href: "/dashboard",
+          });
+        }
+        const deliver = getPartnerApprovedWorkOrders(data, partnerId).length;
+        if (deliver > 0) {
+          items.push({
+            id: "partner-deliver",
+            label: "집행·결과 제출",
+            count: deliver,
+            href: "/dashboard",
+          });
+        }
+        break;
       }
-      const deliver = getPartnerApprovedWorkOrders(data, partnerId).length;
-      if (deliver > 0) {
-        items.push({
-          id: "partner-deliver",
-          label: "집행·결과 제출",
-          count: deliver,
-          href: "/dashboard",
-        });
+
+      const contractIds = getPartnerCollaborationContractIds(data, partnerId);
+      const partner = getPartnerByUserId(data.partners, partnerId);
+      const isReferralPartner = partner
+        ? partnerHasCategory(partner, "referral")
+        : false;
+      if (!isReferralPartner) {
+        const openThreads = data.qaThreads.filter(
+          (t) =>
+            contractIds.includes(t.contractId) && t.status !== "closed",
+        ).length;
+        if (openThreads > 0) {
+          items.push({
+            id: "partner-qa",
+            label: "소통 스레드",
+            count: openThreads,
+            href: "/dashboard",
+          });
+        }
       }
       break;
     }
@@ -294,9 +324,36 @@ export function getNavBadgeCountForHref(
 export function getPartnerTabActionCounts(
   data: AppData,
   partnerId: string,
-): Partial<Record<"overview" | "approvals" | "active" | "experience" | "history", number>> {
+  userId?: string,
+): Partial<
+  Record<
+    "overview" | "collaborate" | "work" | "approvals" | "active" | "experience" | "history",
+    number
+  >
+> {
+  if (PARTNER_SELF_SERVICE_WORKFLOW_ENABLED) {
+    return {
+      approvals: getPartnerPendingApprovalOrders(data, partnerId).length,
+      active: getPartnerApprovedWorkOrders(data, partnerId).length,
+    };
+  }
+
+  const contractIds = getPartnerCollaborationContractIds(data, partnerId);
+  const partner = getPartnerByUserId(data.partners, partnerId);
+  const isReferralPartner = partner
+    ? partnerHasCategory(partner, "referral")
+    : false;
+  const openThreads = isReferralPartner
+    ? 0
+    : data.qaThreads.filter(
+        (t) => contractIds.includes(t.contractId) && t.status !== "closed",
+      ).length;
+  const workCount = data.workOrders.filter(
+    (o) => o.partnerId === partnerId,
+  ).length;
+
   return {
-    approvals: getPartnerPendingApprovalOrders(data, partnerId).length,
-    active: getPartnerApprovedWorkOrders(data, partnerId).length,
+    collaborate: openThreads,
+    work: workCount,
   };
 }

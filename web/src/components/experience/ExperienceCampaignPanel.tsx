@@ -8,9 +8,11 @@ import { useExperience } from "@/features/experience/useExperience";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { ExperienceParticipantListEditor } from "@/components/experience/ExperienceParticipantListEditor";
 import { ExperiencePartnerSlotStaffPanel } from "@/components/experience/ExperiencePartnerSlotStaffPanel";
+import { ExperiencePublicListingEditor } from "@/components/experience/ExperiencePublicListingEditor";
 import { Input, Select, Textarea } from "@/components/ui/FormFields";
 import {
   formatExperienceFieldAssignees,
@@ -197,6 +199,16 @@ export function ExperienceCampaignPanel({
                     onSave={(criteria) => saveCriteria(campaign, criteria)}
                   />
 
+                  {mode === "staff" && !readOnly ? (
+                    <ExperiencePublicListingEditor
+                      campaign={campaign}
+                      userId={currentUser.id}
+                      onSave={(publicListing) =>
+                        updateExperienceCampaign(campaign.id, { publicListing })
+                      }
+                    />
+                  ) : null}
+
                   {mode === "staff" && campaign.schedulingStatus === "draft" && (
                     <Button
                       size="sm"
@@ -345,6 +357,15 @@ function CriteriaBlock({
   }, [campaign.id, campaign.criteria]);
 
   const criteriaDirty = !valuesEqual(criteria, campaign.criteria);
+  const saveMeta = useSaveMeta({
+    savedAt: campaign.updatedAt,
+    savedByUserId: campaign.createdByUserId,
+  });
+
+  function handleSaveCriteria() {
+    onSave(criteria);
+    saveMeta.recordSave();
+  }
 
   if (!editable) {
     return (
@@ -429,7 +450,13 @@ function CriteriaBlock({
         onChange={(e) => setCriteria({ ...criteria, notes: e.target.value })}
         rows={2}
       />
-      <SaveButton size="sm" dirty={criteriaDirty} onClick={() => onSave(criteria)}>
+      <SaveButton
+        size="sm"
+        dirty={criteriaDirty}
+        onClick={handleSaveCriteria}
+        savedAt={saveMeta.savedAt}
+        savedBy={saveMeta.savedBy}
+      >
         조건 저장
       </SaveButton>
     </div>

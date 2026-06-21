@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+/* 공개 포털 — 밝은 톤 기본 (리뷰 마켓플레이스 UX) */
+:root {
+  color-scheme: light;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --foreground-secondary: #475569;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --muted: #64748b;
+  --accent: #2563eb;
+  --accent-soft: #eff6ff;
+  --premium: #7c3aed;
+  --premium-soft: #f5f3ff;
+  --danger: #e11d48;
+  --font-pretendard: "Pretendard Variable", Pretendard, sans-serif;
+}
+
+body {
+  font-family: var(--font-pretendard), system-ui, sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+}

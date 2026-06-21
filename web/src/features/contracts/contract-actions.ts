@@ -16,6 +16,7 @@ import {
   buildReferralCostLines,
   generateWorkOrdersForContract,
 } from "@/lib/work-order-utils";
+import { applySyncReferralCommissionWorkOrders } from "@/features/work-orders/work-order-actions";
 import {
   getContractTargetChannels,
   getContractTargetCount,
@@ -26,6 +27,7 @@ import type {
   ContractInput,
   ContractMemo,
   ContractRecord,
+  ContractTermsProposedValues,
   Execution,
   ExecutionInput,
   TerminationReason,
@@ -264,22 +266,29 @@ export function applyUpdateContract(
     }
   }
 
-  return {
-    ...prev,
-    contractRecords,
-    ...(mode === "recontract"
-      ? {
-          extensionApprovals: prev.extensionApprovals.filter(
-            (a) => !(a.contractId === id && a.status === "pending"),
-          ),
-        }
-      : {}),
-    contracts: prev.contracts.map((c) =>
-      c.id === id ? { ...c, ...patch } : c,
-    ),
-    workOrders,
-    executions,
-  };
+  return applySyncReferralCommissionWorkOrders(
+    {
+      ...prev,
+      contractRecords,
+      ...(mode === "recontract"
+        ? {
+            extensionApprovals: prev.extensionApprovals.filter(
+              (a) => !(a.contractId === id && a.status === "pending"),
+            ),
+            contractTermsApprovals: (prev.contractTermsApprovals ?? []).filter(
+              (a) => !(a.contractId === id && a.status === "pending"),
+            ),
+          }
+        : {}),
+      contracts: prev.contracts.map((c) =>
+        c.id === id ? { ...c, ...patch } : c,
+      ),
+      workOrders,
+      executions,
+    },
+    ctx.todayISO(),
+    id,
+  );
 }
 
 export function applyDeleteContract(prev: AppData, id: string): AppData {
@@ -421,6 +430,97 @@ export function applyRequestExtension(
         },
       ],
     },
+  };
+}
+
+export function applyRequestContractTermsApproval(
+  prev: AppData,
+  contractId: string,
+  requestedBy: string,
+  mode: ContractTermsChangeMode,
+  proposedValues: ContractTermsProposedValues,
+  ctx: ContractActionContext,
+): { next: AppData; ok: boolean } {
+  const contract = prev.contracts.find((c) => c.id === contractId);
+  if (!contract) return { next: prev, ok: false };
+
+  const hasPending = (prev.contractTermsApprovals ?? []).some(
+    (a) => a.contractId === contractId && a.status === "pending",
+  );
+  if (hasPending) return { next: prev, ok: false };
+
+  return {
+    ok: true,
+    next: {
+      ...prev,
+      contractTermsApprovals: [
+        ...(prev.contractTermsApprovals ?? []),
+        {
+          id: ctx.newId("cta"),
+          contractId,
+          requestedBy,
+          status: "pending" as const,
+          createdAt: ctx.todayISO(),
+          mode,
+          proposedValues,
+        },
+      ],
+    },
+  };
+}
+
+export function applyApproveContractTermsApproval(
+  prev: AppData,
+  approvalId: string,
+  reviewerId: string,
+  ctx: ContractActionContext,
+): AppData {
+  const approval = (prev.contractTermsApprovals ?? []).find(
+    (a) => a.id === approvalId,
+  );
+  if (!approval || approval.status !== "pending") return prev;
+
+  const marked = {
+    ...prev,
+    contractTermsApprovals: (prev.contractTermsApprovals ?? []).map((a) =>
+      a.id === approvalId
+        ? {
+            ...a,
+            status: "approved" as const,
+            reviewedBy: reviewerId,
+            reviewedAt: ctx.todayISO(),
+          }
+        : a,
+    ),
+  };
+
+  return applyUpdateContract(
+    marked,
+    approval.contractId,
+    approval.proposedValues,
+    approval.mode,
+    ctx,
+  );
+}
+
+export function applyRejectContractTermsApproval(
+  prev: AppData,
+  approvalId: string,
+  reviewerId: string,
+  ctx: ContractActionContext,
+): AppData {
+  return {
+    ...prev,
+    contractTermsApprovals: (prev.contractTermsApprovals ?? []).map((a) =>
+      a.id === approvalId
+        ? {
+            ...a,
+            status: "rejected" as const,
+            reviewedBy: reviewerId,
+            reviewedAt: ctx.todayISO(),
+          }
+        : a,
+    ),
   };
 }
 

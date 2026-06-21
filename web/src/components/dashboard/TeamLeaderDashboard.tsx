@@ -27,6 +27,9 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { StatCard } from "@/components/ui/StatCard";
 import { DashboardHeader } from "@/components/dashboard/StaffDashboard";
+import { StandardContractWorkflowPanel } from "@/components/dashboard/StandardContractWorkflowPanel";
+import { RoleOnboardingPanel } from "@/components/dashboard/RoleOnboardingPanel";
+import { StaffDailyActionsPanel } from "@/components/dashboard/StaffDailyActionsPanel";
 import { DashboardBonusSection } from "@/components/dashboard/DashboardBonusSection";
 import { BonusApprovalPanel } from "@/components/bonus/BonusApprovalPanel";
 import { BonusPolicyPanel } from "@/components/bonus/BonusPolicyPanel";
@@ -61,6 +64,12 @@ import {
   getUserName,
 } from "@/lib/selectors";
 import {
+  formatChangedFieldsSummary,
+  getTermsFormChangedFields,
+  TERMS_MODE_LABELS,
+} from "@/lib/contract-terms-approval-utils";
+import { contractToTermsForm } from "@/lib/contract-terms-utils";
+import {
   formatContractTargetSummary,
   getContractTargetChannels,
   getContractVisibleTargetChannels,
@@ -84,9 +93,13 @@ export function TeamLeaderDashboard() {
   const [listModal, setListModal] = useState<TeamLeaderListModal>(null);
   const {
     extensionApprovals,
+    contractTermsApprovals,
     approveExtension,
     rejectExtension,
+    approveContractTermsApproval,
+    rejectContractTermsApproval,
     contracts: allContracts,
+    taskChannels,
   } = data;
 
   const teamId = currentUser.teamId ?? "team-a";
@@ -145,6 +158,18 @@ export function TeamLeaderDashboard() {
 
   const pending = extensionApprovals.filter((a) => a.status === "pending");
 
+  const teamContractIds = useMemo(
+    () => new Set(teamContracts.map((c) => c.id)),
+    [teamContracts],
+  );
+  const pendingTermsApprovals = useMemo(
+    () =>
+      (contractTermsApprovals ?? []).filter(
+        (a) => a.status === "pending" && teamContractIds.has(a.contractId),
+      ),
+    [contractTermsApprovals, teamContractIds],
+  );
+
   const chartData = teamMembers.map((m) => ({
     name: m.name,
     달성률: Math.round(m.completionRate * 10) / 10,
@@ -156,6 +181,10 @@ export function TeamLeaderDashboard() {
         title="팀장 대시보드"
         description={`${periodLabel} · 팀 관리 · 본인 담당 업무 · 연장 승인`}
       />
+
+      <RoleOnboardingPanel />
+      <StandardContractWorkflowPanel />
+      <StaffDailyActionsPanel />
 
       <StaffWorkConfirmPanel />
 
@@ -411,6 +440,89 @@ export function TeamLeaderDashboard() {
             {pending.length === 0 && (
               <p className="py-12 text-center text-sm text-zinc-500">
                 승인 대기 항목이 없습니다
+              </p>
+            )}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="계약 조건 변경 결재"
+            subtitle={`대기 ${pendingTermsApprovals.length}건 · 재계약·조건 변경 팀장 승인`}
+            action={
+              pendingTermsApprovals.length > 0 ? (
+                <Badge variant="warning">
+                  {pendingTermsApprovals.length}건 대기
+                </Badge>
+              ) : undefined
+            }
+          />
+          <div className="space-y-3">
+            {pendingTermsApprovals.map((item) => {
+              const contract = allContracts.find(
+                (c) => c.id === item.contractId,
+              );
+              const baseline = contract
+                ? contractToTermsForm(contract)
+                : null;
+              const changedSummary = baseline
+                ? formatChangedFieldsSummary(
+                    getTermsFormChangedFields(
+                      baseline,
+                      item.proposedValues,
+                      taskChannels,
+                    ),
+                    taskChannels,
+                  )
+                : "";
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-zinc-200">
+                      {contract?.clientName ??
+                        getClientName(data, item.contractId)}
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      {TERMS_MODE_LABELS[item.mode]} · 요청{" "}
+                      {getUserName(data, item.requestedBy)} ·{" "}
+                      {item.createdAt}
+                    </p>
+                    {changedSummary && (
+                      <p className="mt-1 truncate text-xs text-amber-400/80">
+                        변경: {changedSummary}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() =>
+                        rejectContractTermsApproval(item.id, currentUser.id)
+                      }
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      반려
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        approveContractTermsApproval(item.id, currentUser.id)
+                      }
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      승인
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+            {pendingTermsApprovals.length === 0 && (
+              <p className="py-12 text-center text-sm text-zinc-500">
+                조건 변경 결재 대기 항목이 없습니다
               </p>
             )}
           </div>

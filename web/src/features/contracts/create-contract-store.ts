@@ -3,11 +3,14 @@ import {
   applyAddContract,
   applyAddContractMemo,
   applyAddExecution,
+  applyApproveContractTermsApproval,
   applyApproveExtension,
   applyDeleteContract,
   applyDeleteContractMemo,
   applyDeleteExecution,
+  applyRejectContractTermsApproval,
   applyRejectExtension,
+  applyRequestContractTermsApproval,
   applyRequestExtension,
   applyTerminateContract,
   applyUpdateContract,
@@ -15,6 +18,7 @@ import {
   applyUpdateContractLocation,
   applyUpdateExecution,
 } from "@/features/contracts/contract-actions";
+import type { ContractTermsFormValues } from "@/lib/contract-terms-utils";
 import type { ClientLinksInput } from "@/lib/client-links-utils";
 import type { ContractTermsChangeMode } from "@/lib/contract-terms-utils";
 import type { LocationProfileInput } from "@/lib/location-profile-utils";
@@ -39,6 +43,14 @@ export type ContractStore = {
   requestExtension: (contractId: string, requestedBy: string) => boolean;
   approveExtension: (approvalId: string) => void;
   rejectExtension: (approvalId: string) => void;
+  requestContractTermsApproval: (
+    contractId: string,
+    requestedBy: string,
+    mode: ContractTermsChangeMode,
+    proposedValues: ContractTermsFormValues,
+  ) => boolean;
+  approveContractTermsApproval: (approvalId: string, reviewerId: string) => void;
+  rejectContractTermsApproval: (approvalId: string, reviewerId: string) => void;
   addExecution: (input: ExecutionInput) => Execution;
   updateExecution: (id: string, input: Partial<ExecutionInput>) => void;
   deleteExecution: (id: string) => void;
@@ -108,6 +120,35 @@ export function createContractStore(deps: StoreDeps): ContractStore {
 
     rejectExtension(approvalId) {
       deps.persist((prev) => applyRejectExtension(prev, approvalId));
+    },
+
+    requestContractTermsApproval(contractId, requestedBy, mode, proposedValues) {
+      let ok = false;
+      deps.persist((prev) => {
+        const result = applyRequestContractTermsApproval(
+          prev,
+          contractId,
+          requestedBy,
+          mode,
+          proposedValues,
+          ctx,
+        );
+        ok = result.ok;
+        return result.next;
+      });
+      return ok;
+    },
+
+    approveContractTermsApproval(approvalId, reviewerId) {
+      deps.persist((prev) =>
+        applyApproveContractTermsApproval(prev, approvalId, reviewerId, ctx),
+      );
+    },
+
+    rejectContractTermsApproval(approvalId, reviewerId) {
+      deps.persist((prev) =>
+        applyRejectContractTermsApproval(prev, approvalId, reviewerId, ctx),
+      );
     },
 
     addExecution(input) {

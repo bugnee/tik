@@ -1,5 +1,9 @@
-import { ensureAllContractExecutions } from "@/lib/execution-generation-utils";
+import {
+  dedupeAllExecutions,
+  ensureAllContractExecutions,
+} from "@/lib/execution-generation-utils";
 import { syncAllContractProgress } from "@/lib/selectors";
+import { dedupeWorkOrders } from "@/lib/work-order-utils";
 import type { AppData } from "@/lib/types";
 
 /** 계약·실행·워크오더·채널 변경 시 진행률·execution 동기화 필요 */
@@ -39,9 +43,16 @@ export function applyFullContractSync(
   pipeline: AppDataSyncPipeline,
 ): AppData {
   const normalized = pipeline.normalize(data);
+  const dedupedOrders = dedupeWorkOrders(normalized.workOrders);
+  const base = { ...normalized, workOrders: dedupedOrders };
+  const dedupedExecutions = dedupeAllExecutions(base, base.taskChannels);
   const withProgress = {
-    ...normalized,
-    contracts: syncAllContractProgress(normalized),
+    ...base,
+    executions: dedupedExecutions,
+    contracts: syncAllContractProgress({
+      ...base,
+      executions: dedupedExecutions,
+    }),
   };
   return pipeline.normalize({
     ...withProgress,

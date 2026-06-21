@@ -487,7 +487,7 @@ export function applyAcceptExperienceParticipationProposal(
   prev: AppData,
   proposalId: string,
   staffUserId: string,
-  reviewNote: string | undefined,
+  staffReviewMemo: string | undefined,
   ctx: ExperienceActionContext,
 ): { next: AppData; ok: boolean } {
   const proposal = (prev.experienceParticipationProposals ?? []).find(
@@ -533,7 +533,7 @@ export function applyAcceptExperienceParticipationProposal(
               status: "accepted" as const,
               reviewedByUserId: staffUserId,
               reviewedAt: ctx.todayISO(),
-              reviewNote,
+              staffReviewMemo,
             }
           : item,
       ),
@@ -545,7 +545,7 @@ export function applyRejectExperienceParticipationProposal(
   prev: AppData,
   proposalId: string,
   staffUserId: string,
-  reviewNote: string | undefined,
+  staffReviewMemo: string | undefined,
   ctx: ExperienceActionContext,
 ): { next: AppData; ok: boolean } {
   const proposal = (prev.experienceParticipationProposals ?? []).find(
@@ -568,7 +568,7 @@ export function applyRejectExperienceParticipationProposal(
               status: "rejected" as const,
               reviewedByUserId: staffUserId,
               reviewedAt: ctx.todayISO(),
-              reviewNote,
+              staffReviewMemo,
             }
           : item,
       ),

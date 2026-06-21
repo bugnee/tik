@@ -1,20 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  CalendarDays,
-  CheckCircle2,
   ClipboardList,
   History,
-  Loader2,
+  MessageCircle,
 } from "lucide-react";
 import { useData } from "@/context/DataContext";
 import { useDashboardPeriod } from "@/context/DashboardPeriodContext";
 import { useRole } from "@/context/RoleContext";
+import { PartnerCollaborationPanel } from "@/components/partner/PartnerCollaborationPanel";
 import { PartnerCollaborationHistoryPanel } from "@/components/partner/PartnerCollaborationHistoryPanel";
-import { PartnerExperienceSlotsPanel } from "@/components/experience/PartnerExperienceSlotsPanel";
-import { PartnerWorkApprovalCard } from "@/components/partner/PartnerWorkApprovalCard";
-import { PartnerWorkDeliverCard } from "@/components/partner/PartnerWorkDeliverCard";
+import { PartnerWorkReadOnlyCard } from "@/components/partner/PartnerWorkReadOnlyCard";
 import { LocationProfilePanel } from "@/components/location/LocationProfilePanel";
 import { PartnerWorkCalendar } from "@/components/work-orders/PartnerWorkCalendar";
 import { Badge } from "@/components/ui/Badge";
@@ -24,16 +21,11 @@ import { TabBar } from "@/components/ui/TabBar";
 import { formatKRW } from "@/lib/finance";
 import { getPartnerLocation } from "@/lib/location-profile-utils";
 import {
-  getPartnerExperienceOffers,
-} from "@/lib/experience-partner-slot-utils";
-import {
   buildPartnerPortalSummary,
   getPartnerActiveWorkOrders,
 } from "@/lib/partner-detail-utils";
-import {
-  getPartnerApprovedWorkOrders,
-  getPartnerPendingApprovalOrders,
-} from "@/lib/partner-work-queue-utils";
+import { getPartnerCollaborationContracts } from "@/lib/partner-collaboration-utils";
+import { PARTNER_SELF_SERVICE_WORKFLOW_ENABLED } from "@/lib/partner-workflow-config";
 import {
   formatPartnerCategories,
   getPartnerStatusBadgeVariant,
@@ -41,13 +33,9 @@ import {
 } from "@/lib/partner-utils";
 import { getPartnerTabActionCounts } from "@/lib/role-action-utils";
 import { getUserName } from "@/lib/selectors";
+import { enrichWorkOrder } from "@/lib/work-order-utils";
 
-type PartnerTab =
-  | "overview"
-  | "approvals"
-  | "active"
-  | "experience"
-  | "history";
+type PartnerTab = "overview" | "collaborate" | "work" | "history";
 
 export function PartnerPortalDashboard({ partnerId }: { partnerId: string }) {
   const data = useData();
@@ -57,32 +45,79 @@ export function PartnerPortalDashboard({ partnerId }: { partnerId: string }) {
   const [tab, setTab] = useState<PartnerTab>("overview");
 
   const summary = useMemo(
-    () => buildPartnerPortalSummary(data, partnerId, dashboardPeriod.periodFilter),
+    () =>
+      buildPartnerPortalSummary(data, partnerId, dashboardPeriod.periodFilter),
     [data, partnerId, dashboardPeriod.periodFilter],
   );
 
-  const partnerForOffers = data.partners.find((item) => item.id === partnerId);
-  const experienceOfferCount = useMemo(() => {
-    if (!partnerForOffers) return 0;
-    return getPartnerExperienceOffers(data, partnerForOffers).length;
-  }, [data, partnerForOffers]);
+  const collaborationContracts = useMemo(
+    () => getPartnerCollaborationContracts(data, partnerId),
+    [data, partnerId],
+  );
 
-  const pendingOrders = useMemo(
-    () => getPartnerPendingApprovalOrders(data, partnerId),
-    [data, partnerId],
-  );
-  const approvedOrders = useMemo(
-    () => getPartnerApprovedWorkOrders(data, partnerId),
-    [data, partnerId],
-  );
   const calendarOrders = useMemo(
     () => getPartnerActiveWorkOrders(data, partnerId),
     [data, partnerId],
   );
+
+  const visibleWorkOrders = useMemo(() => {
+    const orders = data.workOrders
+      .filter((o) => o.partnerId === partnerId)
+      .map((o) => enrichWorkOrder(data, o))
+      .sort((a, b) => b.dueDate.localeCompare(a.dueDate));
+    return orders;
+  }, [data, partnerId]);
+
   const tabActionCounts = useMemo(
-    () => getPartnerTabActionCounts(data, partnerId),
-    [data, partnerId],
+    () => getPartnerTabActionCounts(data, partnerId, currentUser.id),
+    [data, partnerId, currentUser.id],
   );
+
+  const isReferralPartner = summary?.isReferralPartner ?? false;
+
+  useEffect(() => {
+    if (isReferralPartner && tab === "collaborate") {
+      setTab("overview");
+    }
+  }, [isReferralPartner, tab]);
+
+  const tabItems = useMemo(() => {
+    const items = [
+      {
+        id: "overview" as const,
+        label: "개요",
+        shortLabel: "개요",
+        icon: ClipboardList,
+        accent: "cyan" as const,
+      },
+      {
+        id: "collaborate" as const,
+        label: "소통",
+        shortLabel: "소통",
+        icon: MessageCircle,
+        accent: "violet" as const,
+        badgeCount: tabActionCounts.collaborate,
+      },
+      {
+        id: "work" as const,
+        label: "배정 업무",
+        shortLabel: "업무",
+        icon: ClipboardList,
+        accent: "emerald" as const,
+        badgeCount: tabActionCounts.work,
+      },
+      {
+        id: "history" as const,
+        label: "협업 이력",
+        shortLabel: "이력",
+        icon: History,
+        accent: "sky" as const,
+      },
+    ];
+    return isReferralPartner
+      ? items.filter((item) => item.id !== "collaborate")
+      : items;
+  }, [isReferralPartner, tabActionCounts.collaborate, tabActionCounts.work]);
 
   if (!summary) {
     return (
@@ -100,13 +135,17 @@ export function PartnerPortalDashboard({ partnerId }: { partnerId: string }) {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-cyan-300/80">
-              TRIP IT KOREA · 파트너 대시보드
+              트립잇코리아 · 파트너 포털
             </p>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-50 sm:text-3xl">
               {partner.companyName}
             </h1>
             <p className="mt-2 text-sm text-zinc-400">
-              실행 요청 승인 · 집행 · 결과 제출 · 지급
+              {isReferralPartner
+                ? "리셀러 수수료 · 배정 업무 조회 · 지급 이력 확인"
+                : PARTNER_SELF_SERVICE_WORKFLOW_ENABLED
+                  ? "실행 요청 승인 · 집행 · 결과 제출 · 지급"
+                  : "배정 업무 조회 · 담당자와 Q&A 소통 (승인·결과입력은 담당 처리)"}
             </p>
             <p className="mt-1 text-xs text-zinc-500">
               {formatPartnerCategories(
@@ -123,82 +162,50 @@ export function PartnerPortalDashboard({ partnerId }: { partnerId: string }) {
         </div>
       </div>
 
-      <TabBar
-        active={tab}
-        onChange={setTab}
-        items={[
-          {
-            id: "overview",
-            label: "개요",
-            shortLabel: "개요",
-            icon: ClipboardList,
-            accent: "cyan",
-          },
-          {
-            id: "approvals",
-            label: "승인 대기",
-            shortLabel: "승인",
-            icon: CheckCircle2,
-            accent: "amber",
-            badgeCount: tabActionCounts.approvals,
-          },
-          {
-            id: "active",
-            label: "진행 업무",
-            shortLabel: "진행",
-            icon: Loader2,
-            accent: "emerald",
-            badgeCount: tabActionCounts.active,
-          },
-          {
-            id: "experience",
-            label: `체험단 일정${experienceOfferCount ? ` (${experienceOfferCount})` : ""}`,
-            shortLabel: "체험",
-            icon: CalendarDays,
-            accent: "amber",
-          },
-          {
-            id: "history",
-            label: "협업 이력",
-            shortLabel: "이력",
-            icon: History,
-            accent: "violet",
-          },
-        ]}
-      />
+      <TabBar active={tab} onChange={setTab} items={tabItems} />
 
       {tab === "overview" && (
         <div className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {isReferralPartner ? (
+              <StatCard
+                label="리셀러 고객"
+                value={`${summary.referralSummary.count}곳`}
+                subValue={`계약 ${summary.referralSummary.contracted} · 예정 수수료 ${formatKRW(summary.referralSummary.totalCommission)}`}
+                icon={MessageCircle}
+                accent="cyan"
+              />
+            ) : (
+              <StatCard
+                label="협업 업체"
+                value={`${collaborationContracts.length}곳`}
+                subValue="소통·배정 업무"
+                icon={MessageCircle}
+                accent="rose"
+                onValueClick={() => setTab("collaborate")}
+              />
+            )}
             <StatCard
-              label="승인 필요"
-              value={`${summary.pendingApprovalCount}건`}
-              subValue="실행 요청 검토"
-              icon={CheckCircle2}
-              accent="amber"
-              onValueClick={() => setTab("approvals")}
-            />
-            <StatCard
-              label="담당 확인 중"
-              value={`${summary.pendingStaffConfirmCount}건`}
-              subValue="파트너 승인 · 담당 반영 대기"
-              icon={Loader2}
-              accent="rose"
-            />
-            <StatCard
-              label="진행 · 결과 제출"
-              value={`${summary.approvedCount + summary.deliveredCount}건`}
-              subValue="집행 · 입금 대기 포함"
+              label="배정 업무"
+              value={`${visibleWorkOrders.length}건`}
+              subValue="조회 전용"
               icon={ClipboardList}
               accent="cyan"
-              onValueClick={() => setTab("active")}
+              onValueClick={() => setTab("work")}
+            />
+            <StatCard
+              label="진행 중"
+              value={`${summary.approvedCount + summary.deliveredCount}건`}
+              subValue="담당·파트너 처리 중"
+              icon={ClipboardList}
+              accent="emerald"
             />
             <StatCard
               label={`${summary.periodLabel} 지급`}
               value={formatKRW(summary.periodPaidAmount)}
               subValue={`대기 ${formatKRW(summary.periodPendingPayoutAmount)}`}
               icon={History}
-              accent="emerald"
+              accent="amber"
               onValueClick={() => setTab("history")}
             />
           </div>
@@ -210,100 +217,30 @@ export function PartnerPortalDashboard({ partnerId }: { partnerId: string }) {
           />
 
           <PartnerWorkCalendar orders={calendarOrders} />
-
-          {pendingOrders.length > 0 && (
-            <Card glow className="border-amber-500/25">
-              <CardHeader
-                title="바로 처리할 승인 요청"
-                subtitle="승인 시 담당자에게 피드백과 함께 전달됩니다"
-              />
-              <div className="space-y-3 px-4 pb-4">
-                {pendingOrders.slice(0, 3).map((order) => (
-                  <PartnerWorkApprovalCard
-                    key={order.id}
-                    data={data}
-                    order={order}
-                  />
-                ))}
-              </div>
-            </Card>
-          )}
         </div>
       )}
 
-      {tab === "approvals" && (
+      {!isReferralPartner && tab === "collaborate" && (
+        <PartnerCollaborationPanel partnerId={partnerId} />
+      )}
+
+      {tab === "work" && (
         <div className="space-y-4">
-          {pendingOrders.length === 0 ? (
+          {visibleWorkOrders.length === 0 ? (
             <Card className="py-12 text-center text-sm text-zinc-500">
-              승인 대기 중인 실행 요청이 없습니다.
+              배정된 업무가 없습니다. 담당자가 업무를 배정하면 여기에서 확인할
+              수 있습니다.
             </Card>
           ) : (
-            pendingOrders.map((order) => (
-              <PartnerWorkApprovalCard key={order.id} data={data} order={order} />
+            visibleWorkOrders.map((order) => (
+              <PartnerWorkReadOnlyCard
+                key={order.id}
+                data={data}
+                order={order}
+              />
             ))
           )}
         </div>
-      )}
-
-      {tab === "active" && (
-        <div className="space-y-6">
-          {summary.pendingStaffConfirmCount > 0 && (
-            <Card className="border-violet-500/20">
-              <CardHeader
-                title="담당 확인 대기"
-                subtitle="승인 완료 · 담당자 확인 후 업무가 시작됩니다"
-              />
-              <div className="space-y-2 px-4 pb-4">
-                {summary.activeWorkOrders
-                  .filter((o) => o.stage === "pending_staff_confirm")
-                  .map((order) => (
-                    <div
-                      key={order.id}
-                      className="rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2 text-sm"
-                    >
-                      <p className="font-medium text-zinc-100">{order.title}</p>
-                      <p className="text-xs text-zinc-500">
-                        {order.clientName} · {order.staffName}
-                      </p>
-                      {order.partnerApprovalNote && (
-                        <p className="mt-1 text-xs text-violet-200/90">
-                          내 피드백: {order.partnerApprovalNote}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-              </div>
-            </Card>
-          )}
-
-          {approvedOrders.length === 0 &&
-          summary.deliveredCount === 0 &&
-          summary.pendingStaffConfirmCount === 0 ? (
-            <Card className="py-12 text-center text-sm text-zinc-500">
-              진행 중인 업무가 없습니다.
-            </Card>
-          ) : (
-            <>
-              {approvedOrders.map((order) => (
-                <PartnerWorkDeliverCard key={order.id} data={data} order={order} />
-              ))}
-              {summary.activeWorkOrders
-                .filter((o) => o.stage === "delivered" || o.stage === "paid")
-                .map((order) => (
-                  <Card key={order.id} className="border-zinc-800 p-4">
-                    <p className="font-medium text-zinc-100">{order.title}</p>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      {order.clientName} · 입금 확인 대기
-                    </p>
-                  </Card>
-                ))}
-            </>
-          )}
-        </div>
-      )}
-
-      {tab === "experience" && (
-        <PartnerExperienceSlotsPanel partnerId={partnerId} />
       )}
 
       {tab === "history" && (

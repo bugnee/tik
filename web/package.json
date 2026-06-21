@@ -1,5 +1,5 @@
 {
-  "name": "web",
+  "name": "tripitkorea-erp",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
+    "@tripitkorea/shared": "*",
     "clsx": "^2.1.1",
     "lucide-react": "^1.18.0",
     "next": "16.2.9",

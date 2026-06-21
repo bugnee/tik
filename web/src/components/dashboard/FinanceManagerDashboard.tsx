@@ -16,6 +16,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { SortableTh } from "@/components/ui/DataTable";
 import { StatCard } from "@/components/ui/StatCard";
 import { DashboardHeader } from "@/components/dashboard/StaffDashboard";
+import { RoleOnboardingPanel } from "@/components/dashboard/RoleOnboardingPanel";
 import { DashboardBonusSection } from "@/components/dashboard/DashboardBonusSection";
 import { useData } from "@/context/DataContext";
 import {
@@ -117,6 +118,8 @@ export function FinanceManagerDashboard({ embedded }: { embedded?: boolean } = {
           description={`${periodLabel} · 원가·성과급(세전) 자금 운영 · 15일 마감 · 25일 급여 합산`}
         />
       )}
+
+      {!embedded && <RoleOnboardingPanel />}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
@@ -479,7 +482,7 @@ function ExpensePayoutQueue({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `tripit_expense_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `tripitkorea_expense_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }

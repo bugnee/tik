@@ -6,6 +6,7 @@ import { Building2, ChevronRight, Plus, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Input, Textarea } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
 import { PeriodFilterBar } from "@/components/ui/PeriodFilterBar";
@@ -47,6 +48,7 @@ export function PartnerClientStatusPanel({
   const referralFormDirty = Boolean(
     clientName.trim() || memo.trim() || estimatedFee.trim(),
   );
+  const referralSaveMeta = useSaveMeta();
 
   const allRows = useMemo(
     () => buildPartnerReferralRows(data, partnerId),
@@ -81,6 +83,7 @@ export function PartnerClientStatusPanel({
     setClientName("");
     setMemo("");
     setEstimatedFee("");
+    referralSaveMeta.recordSave();
   }
 
   return (
@@ -88,7 +91,7 @@ export function PartnerClientStatusPanel({
       <div>
         <h2 className="text-sm font-semibold text-zinc-200">고객사 현황</h2>
         <p className="text-xs text-zinc-500">
-          리셀러 등록 · 진행 확인 · 계약금액 · 지급 예정 수수료 (10%)
+          리셀러 등록 · 진행 확인 · 계약금액 · 지급 예정 수수료 (입금 확인 후 10일)
         </p>
       </div>
 
@@ -156,7 +159,14 @@ export function PartnerClientStatusPanel({
             />
           </div>
         </div>
-        <SaveButton type="submit" size="sm" className="mt-3" dirty={referralFormDirty}>
+        <SaveButton
+          type="submit"
+          size="sm"
+          className="mt-3"
+          dirty={referralFormDirty}
+          savedAt={referralSaveMeta.savedAt}
+          savedBy={referralSaveMeta.savedBy}
+        >
           <Plus className="h-4 w-4" />
           등록
         </SaveButton>
@@ -242,7 +252,7 @@ function PartnerReferralTableRow({ row }: { row: PartnerReferralRow }) {
       <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs">
         {row.monthlyFee > 0 ? formatKRW(row.monthlyFee) : "-"}
       </td>
-      <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-rose-400/90">
+      <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-emerald-400/90">
         {row.commission > 0 ? formatKRW(row.commission) : "-"}
       </td>
     </tr>
@@ -290,7 +300,7 @@ function PartnerReferralListModal({
               )}
               <p className="mt-1 text-xs text-zinc-500">
                 계약금액 {formatKRW(row.monthlyFee)} · 예정 수수료{" "}
-                <span className="text-rose-400/90">
+                <span className="text-emerald-400/90">
                   {formatKRW(row.commission)}
                 </span>
               </p>

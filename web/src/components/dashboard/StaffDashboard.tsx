@@ -18,6 +18,10 @@ import { StaffBonusRequestPanel } from "@/components/bonus/StaffBonusRequestPane
 import { BonusPayScheduleNotice } from "@/components/bonus/BonusPayScheduleNotice";
 import { ContractBriefListModal } from "@/components/contracts/ContractBriefListModal";
 import { DashboardBonusSection } from "@/components/dashboard/DashboardBonusSection";
+import { StandardContractWorkflowPanel } from "@/components/dashboard/StandardContractWorkflowPanel";
+import { RoleOnboardingPanel } from "@/components/dashboard/RoleOnboardingPanel";
+import { StaffEmptyOnboardingPanel } from "@/components/dashboard/StaffEmptyOnboardingPanel";
+import { StaffDailyActionsPanel } from "@/components/dashboard/StaffDailyActionsPanel";
 import { PlaceQaDashboardPanel } from "@/components/place-qa/PlaceQaDashboardPanel";
 import { StaffWorkConfirmPanel } from "@/components/work-orders/StaffWorkConfirmPanel";
 import { useData } from "@/context/DataContext";
@@ -77,6 +81,13 @@ export function StaffDashboard() {
         title="실무 담당자 대시보드"
         description={`${periodLabel} · ${currentUser.name}님이 담당하는 ${contracts.length}개 업체 현황`}
       />
+
+      <div className="space-y-4">
+        <RoleOnboardingPanel />
+        <StaffEmptyOnboardingPanel />
+        <StandardContractWorkflowPanel />
+        <StaffDailyActionsPanel />
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard

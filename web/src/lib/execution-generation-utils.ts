@@ -26,6 +26,70 @@ const LEGACY_CHANNEL_BY_TYPE: Partial<Record<ExecutionType, WorkOrderTaskType>> 
   press: "press",
 };
 
+/** 실행 행의 채널 키 — 동일 채널 중복 판별용 */
+export function getExecutionChannelKey(
+  execution: Execution,
+): string | null {
+  if (execution.taskChannelId) return execution.taskChannelId;
+  return LEGACY_CHANNEL_BY_TYPE[execution.type] ?? null;
+}
+
+/** 계약별 execution 채널 중복 제거 — taskChannelId 우선, 진행률 높은 건 유지 */
+export function dedupeContractExecutions(
+  executions: Execution[],
+  contractId: string,
+  contract: Contract,
+  channels: TaskChannelDefinition[],
+): Execution[] {
+  const others = executions.filter((e) => e.contractId !== contractId);
+  const contractExecs = executions.filter((e) => e.contractId === contractId);
+  const groups = new Map<string, Execution[]>();
+
+  for (const ex of contractExecs) {
+    const key = getExecutionChannelKey(ex) ?? `__orphan__:${ex.id}`;
+    const bucket = groups.get(key) ?? [];
+    bucket.push(ex);
+    groups.set(key, bucket);
+  }
+
+  const kept: Execution[] = [];
+  for (const [, group] of groups) {
+    if (group.length === 1) {
+      kept.push(syncExecutionFromContract(group[0], contract, channels));
+      continue;
+    }
+    const sorted = [...group].sort((a, b) => {
+      const score = (ex: Execution) =>
+        (ex.taskChannelId ? 100 : 0) +
+        ex.completedCount * 10 +
+        ex.targetCount;
+      return score(b) - score(a);
+    });
+    kept.push(syncExecutionFromContract(sorted[0], contract, channels));
+  }
+
+  return [...others, ...kept];
+}
+
+export function dedupeAllExecutions(
+  data: AppData,
+  channels: TaskChannelDefinition[],
+): Execution[] {
+  let executions = [...data.executions];
+  for (const contract of data.contracts) {
+    const next = dedupeContractExecutions(
+      executions,
+      contract.id,
+      contract,
+      channels,
+    );
+    if (next.length !== executions.length) {
+      executions = next;
+    }
+  }
+  return executions;
+}
+
 export function getSyncExecutionChannels(
   contract: Contract,
   channels: TaskChannelDefinition[],
@@ -82,12 +146,7 @@ export function generateExecutionsForContract(
 
   const contractExecutions = existing.filter((e) => e.contractId === contract.id);
   const hasChannel = (channelId: string) =>
-    contractExecutions.some(
-      (e) =>
-        e.taskChannelId === channelId ||
-        (!e.taskChannelId &&
-          LEGACY_CHANNEL_BY_TYPE[e.type] === channelId),
-    );
+    contractExecutions.some((e) => getExecutionChannelKey(e) === channelId);
 
   const created: ExecutionInput[] = [];
   const syncChannels = getSyncExecutionChannels(contract, channels);
@@ -123,7 +182,14 @@ export function ensureExecutionsForContract(
   channels: TaskChannelDefinition[],
   createId: () => string,
 ): Execution[] {
-  let next = executions.map((ex) =>
+  let next = dedupeContractExecutions(
+    executions,
+    contract.id,
+    contract,
+    channels,
+  );
+
+  next = next.map((ex) =>
     ex.contractId === contract.id
       ? syncExecutionFromContract(ex, contract, channels)
       : ex,

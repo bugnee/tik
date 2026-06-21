@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "트립잇코리아 ERP · 정산 대시보드",
+  title: "TripItKorea ERP · 정산 대시보드",
   description:
-    "트립잇코리아 전사 통합 ERP 및 정산 대시보드 — Next.js · Supabase",
+    "tripitkorea 전사 통합 ERP 및 정산 대시보드 — Next.js · Supabase",
 };
 
 export const viewport = {

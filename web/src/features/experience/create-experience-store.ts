@@ -56,6 +56,7 @@ export type ExperienceStore = {
         | "confirmedVisitDate"
         | "confirmedVisitTime"
         | "confirmedVisitEndTime"
+        | "publicListing"
       >
     >,
   ) => void;
@@ -100,12 +101,12 @@ export type ExperienceStore = {
   acceptExperienceParticipationProposal: (
     proposalId: string,
     staffUserId: string,
-    reviewNote?: string,
+    staffReviewMemo?: string,
   ) => boolean;
   rejectExperienceParticipationProposal: (
     proposalId: string,
     staffUserId: string,
-    reviewNote?: string,
+    staffReviewMemo?: string,
   ) => boolean;
 };
 
@@ -242,14 +243,14 @@ export function createExperienceStore(deps: StoreDeps): ExperienceStore {
       return created;
     },
 
-    acceptExperienceParticipationProposal(proposalId, staffUserId, reviewNote) {
+    acceptExperienceParticipationProposal(proposalId, staffUserId, staffReviewMemo) {
       let ok = false;
       deps.persist((prev) => {
         const result = applyAcceptExperienceParticipationProposal(
           prev,
           proposalId,
           staffUserId,
-          reviewNote,
+          staffReviewMemo,
           ctx,
         );
         ok = result.ok;
@@ -258,14 +259,14 @@ export function createExperienceStore(deps: StoreDeps): ExperienceStore {
       return ok;
     },
 
-    rejectExperienceParticipationProposal(proposalId, staffUserId, reviewNote) {
+    rejectExperienceParticipationProposal(proposalId, staffUserId, staffReviewMemo) {
       let ok = false;
       deps.persist((prev) => {
         const result = applyRejectExperienceParticipationProposal(
           prev,
           proposalId,
           staffUserId,
-          reviewNote,
+          staffReviewMemo,
           ctx,
         );
         ok = result.ok;

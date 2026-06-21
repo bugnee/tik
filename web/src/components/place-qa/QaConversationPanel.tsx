@@ -7,17 +7,25 @@ import { useRole } from "@/context/RoleContext";
 import { usePlaceQa } from "@/features/place-qa/usePlaceQa";
 import { PostLinkOpinionDetail } from "@/components/place-qa/PostLinkOpinionDetail";
 import {
+  QA_EXTERNAL_BUBBLE,
+  QA_EXTERNAL_META,
+  QA_INTERNAL_BUBBLE,
+  QA_INTERNAL_META,
+  QA_THREAD_PANEL,
+} from "@/components/place-qa/qa-message-styles";
+import {
   QaAttachmentField,
   QaMessageAttachmentList,
 } from "@/components/place-qa/QaAttachmentField";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input, Textarea } from "@/components/ui/FormFields";
 import {
   canCloseQaThread,
-  canCreateClientQaThread,
+  canCreateQaThread,
   canParticipateQa,
   canReplyQa,
   formatQaParticipant,
@@ -26,7 +34,9 @@ import {
   getMessagesForThread,
   getQaScopeHint,
   getThreadsForContract,
+  isClientQaRole,
   isInternalQaRole,
+  isPartnerQaRole,
   threadNeedsStaffReply,
 } from "@/lib/place-qa-utils";
 import { getPostLinkOpinionsForContract } from "@/lib/post-link-opinion-utils";
@@ -92,13 +102,17 @@ export function QaConversationPanel({
   }, [threads, opinions]);
 
   const canReply = canReplyQa(data, activeRole, currentUser.id, contractId);
-  const canCreate = canCreateClientQaThread(
+  const canCreate = canCreateQaThread(
     data,
     activeRole,
     currentUser.id,
     contractId,
   );
   const scopeHint = getQaScopeHint(activeRole);
+  const isExternalQaRole = isClientQaRole(activeRole) || isPartnerQaRole(activeRole);
+  const qaPanelTitle = isPartnerQaRole(activeRole)
+    ? "협업 소통"
+    : "고객사 Q&A";
 
   const [selection, setSelection] = useState<FeedSelection | null>(null);
   const [newSubject, setNewSubject] = useState("");
@@ -112,6 +126,8 @@ export function QaConversationPanel({
   const replyDirty =
     replyBody.trim().length > 0 || replyAttachments.length > 0;
   const [showCompose, setShowCompose] = useState(false);
+  const composeSaveMeta = useSaveMeta();
+  const replySaveMeta = useSaveMeta();
 
   const selectedThread =
     selection?.kind === "thread"
@@ -163,6 +179,7 @@ export function QaConversationPanel({
     setNewAttachments([]);
     setShowCompose(false);
     setSelection({ kind: "thread", id: thread.id });
+    composeSaveMeta.recordSave();
   }
 
   function handleReply(e: React.FormEvent) {
@@ -181,16 +198,19 @@ export function QaConversationPanel({
     );
     setReplyBody("");
     setReplyAttachments([]);
+    replySaveMeta.recordSave();
   }
 
   return (
-    <Card glow={activeRole === "client"}>
+    <Card glow={isExternalQaRole}>
       <CardHeader
-        title="고객사 Q&A"
+        title={qaPanelTitle}
         subtitle={
-          activeRole === "client"
+          isClientQaRole(activeRole)
             ? "문의와 링크 보고서 의견을 한곳에서 확인합니다"
-            : `${scopeHint} · 링크 의견 ${opinions.length}건`
+            : isPartnerQaRole(activeRole)
+              ? "담당자와 협업 업체 관련 문의 · 고객사 Q&A와 동일 DB"
+              : `${scopeHint} · 링크 의견 ${opinions.length}건`
         }
         action={
           canCreate && (
@@ -234,6 +254,8 @@ export function QaConversationPanel({
                 !newSubject.trim() ||
                 (!newBody.trim() && newAttachments.length === 0)
               }
+              savedAt={composeSaveMeta.savedAt}
+              savedBy={composeSaveMeta.savedBy}
             >
               등록
             </SaveButton>
@@ -309,7 +331,7 @@ export function QaConversationPanel({
                       </p>
                       <div className="mt-1 flex flex-wrap items-center gap-1">
                         <Badge variant={STATUS_VARIANT[thread.status]}>
-                          {needsReply && activeRole !== "client"
+                          {needsReply && !isExternalQaRole
                             ? "미답변"
                             : QA_THREAD_STATUS_LABELS[thread.status]}
                         </Badge>
@@ -365,7 +387,7 @@ export function QaConversationPanel({
           )}
 
           {selectedThread && !selectedOpinion && (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
+            <div className={QA_THREAD_PANEL}>
               <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="font-medium text-zinc-100">
@@ -399,19 +421,21 @@ export function QaConversationPanel({
 
               <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
                 {messages.map((msg) => {
-                  const isClient =
-                    getAuthorRole(data, msg.authorUserId) === "client";
+                  const authorRole = getAuthorRole(data, msg.authorUserId);
+                  const isExternal =
+                    authorRole === "client" || authorRole === "partner";
                   return (
                     <div
                       key={msg.id}
                       className={cn(
-                        "rounded-xl px-3 py-2.5 text-sm",
-                        isClient
-                          ? "ml-0 mr-8 bg-rose-500/10 text-zinc-200"
-                          : "ml-8 mr-0 bg-emerald-500/10 text-zinc-200",
+                        isExternal ? QA_EXTERNAL_BUBBLE : QA_INTERNAL_BUBBLE,
                       )}
                     >
-                      <p className="mb-1 text-[10px] font-medium text-zinc-500">
+                      <p
+                        className={
+                          isExternal ? QA_EXTERNAL_META : QA_INTERNAL_META
+                        }
+                      >
                         {formatQaParticipant(
                           data,
                           msg.authorUserId,
@@ -433,13 +457,21 @@ export function QaConversationPanel({
               {selectedThread.status !== "closed" && canReply && (
                 <form onSubmit={handleReply} className="mt-4 space-y-2">
                   <Textarea
-                    label={activeRole === "client" ? "추가 문의" : "답변"}
+                    label={
+                      isClientQaRole(activeRole)
+                        ? "추가 문의"
+                        : isPartnerQaRole(activeRole)
+                          ? "추가 문의"
+                          : "답변"
+                    }
                     value={replyBody}
                     onChange={(e) => setReplyBody(e.target.value)}
                     placeholder={
-                      activeRole === "client"
+                      isClientQaRole(activeRole)
                         ? "추가 질문을 입력해 주세요"
-                        : "고객사에 답변을 입력해 주세요 (담당업무 범위 내 공유)"
+                        : isPartnerQaRole(activeRole)
+                          ? "담당자에게 추가 문의를 입력해 주세요"
+                          : "고객사·파트너에 답변을 입력해 주세요 (담당업무 범위 내 공유)"
                     }
                     rows={3}
                   />
@@ -454,9 +486,11 @@ export function QaConversationPanel({
                     disabled={
                       !replyBody.trim() && replyAttachments.length === 0
                     }
+                    savedAt={replySaveMeta.savedAt}
+                    savedBy={replySaveMeta.savedBy}
                   >
                     <Send className="h-4 w-4" />
-                    {activeRole === "client" ? "전송" : "답변 전송"}
+                    {isExternalQaRole ? "전송" : "답변 전송"}
                   </SaveButton>
                 </form>
               )}

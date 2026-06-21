@@ -6,9 +6,9 @@ import {
 } from "@/lib/finance";
 import { forwardRef } from "react";
 
-const fieldLabelClass =
+export const fieldLabelClass =
   "block text-xs font-semibold tracking-wide text-zinc-500";
-const fieldControlClass =
+export const fieldControlClass =
   "h-10 w-full rounded-xl border border-zinc-700/80 bg-zinc-950/90 px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/30";
 const textareaControlClass =
   "min-h-[80px] w-full rounded-xl border border-zinc-700/80 bg-zinc-950/90 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/30";

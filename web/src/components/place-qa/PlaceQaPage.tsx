@@ -15,6 +15,7 @@ import {
   getPlaceCredentialsForContract,
   getQaContractRows,
   getQaScopeHint,
+  isPartnerQaRole,
   threadNeedsStaffReply,
 } from "@/lib/place-qa-utils";
 import { filterContractsByRole } from "@/lib/selectors";
@@ -61,11 +62,16 @@ export function PlaceQaPage() {
     return null;
   }
 
+  const pageTitle = isPartnerQaRole(activeRole) ? "협업 소통" : "고객사 Q&A";
+  const pageDescription = isPartnerQaRole(activeRole)
+    ? `파트너 문의 · ${getQaScopeHint(activeRole)}`
+    : `고객사 질문 · ${getQaScopeHint(activeRole)}`;
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="고객사 Q&A"
-        description={`고객사 질문 · ${getQaScopeHint(activeRole)}`}
+        title={pageTitle}
+        description={pageDescription}
         action={
           <Link
             href="/dashboard"

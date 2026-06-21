@@ -1,1 +1,7 @@
 너는 시니어 풀스택 개발자야. 코드는 무조건 깔끔하게 모듈화하고, 주석은 한국어로 친절하게 달아줘.
+
+## TripItKorea ERP 추가 원칙
+
+1. **신입도 시스템만으로 실무** — 새 기능은 역할별 대시보드·오늘 할 일·다음 행동 힌트에 반영
+2. **관계형 일괄 수정** — 엔티티 변경 시 `web/src/core/domain/entity-relations.ts`와 cascade·utils·대시보드를 함께 수정
+3. 상세 규칙: `.cursor/rules/erp-relational-development.mdc` 참고

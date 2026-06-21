@@ -1,4 +1,4 @@
--- 트립잇코리아 ERP · Supabase 초기 스키마
+-- tripitkorea ERP · Supabase 초기 스키마
 -- RLS: 역할별 데이터 접근 제어
 
 CREATE TYPE user_role AS ENUM ('staff', 'team_leader', 'executive', 'ceo');

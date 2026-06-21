@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
 import { useFormDirty } from "@/hooks/useFormDirty";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Select, Textarea } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
@@ -71,6 +72,14 @@ export function ExecutionFormModal({
     editing?.id ?? "create",
     form,
   );
+  const saveMeta = useSaveMeta(
+    editing?.enteredAt ? { savedAt: editing.enteredAt } : null,
+  );
+
+  function handleSubmit(e: React.FormEvent) {
+    onSubmit(e);
+    saveMeta.recordSave();
+  }
 
   return (
     <Modal
@@ -79,7 +88,7 @@ export function ExecutionFormModal({
       title={editing ? "실행 수정" : "실행 등록"}
       size="lg"
     >
-      <form onSubmit={onSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {showContractSelect && contracts && (
           <Select
             label="계약 업체 *"
@@ -220,7 +229,12 @@ export function ExecutionFormModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             취소
           </Button>
-          <SaveButton type="submit" dirty={formDirty}>
+          <SaveButton
+            type="submit"
+            dirty={formDirty}
+            savedAt={saveMeta.savedAt}
+            savedBy={saveMeta.savedBy}
+          >
             {editing ? "저장" : "등록"}
           </SaveButton>
         </div>

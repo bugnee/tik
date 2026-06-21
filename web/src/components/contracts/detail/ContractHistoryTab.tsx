@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/DataTable";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Textarea } from "@/components/ui/FormFields";
 import { formatKRW } from "@/lib/finance";
 import { getTeamName, getUserName } from "@/lib/selectors";
@@ -40,6 +41,15 @@ export function ContractHistoryTab({
   currentUserId: string;
   activeRole: UserRole;
 }) {
+  const saveMeta = useSaveMeta();
+
+  function handleAddMemo(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (!memoDraft.trim()) return;
+    onAddMemo(ev);
+    saveMeta.recordSave();
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
@@ -114,7 +124,7 @@ export function ContractHistoryTab({
           subtitle="업무 메모 · 날짜·담당자 자동 기록"
         />
         {canWriteMemo && (
-          <form onSubmit={onAddMemo} className="mb-4 space-y-3">
+          <form onSubmit={handleAddMemo} className="mb-4 space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2">
                 <p className="text-[11px] text-zinc-600">날짜</p>
@@ -140,6 +150,8 @@ export function ContractHistoryTab({
                 size="sm"
                 dirty={memoDirty}
                 disabled={!memoDraft.trim()}
+                savedAt={saveMeta.savedAt}
+                savedBy={saveMeta.savedBy}
               >
                 <MessageSquare className="h-3.5 w-3.5" />
                 메모 저장

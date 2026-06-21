@@ -22,8 +22,11 @@ import type { AppData } from "@/lib/types";
 import { WORK_ORDER_STAGE_LABELS } from "@/lib/work-order-utils";
 import type { EnrichedWorkOrder } from "@/lib/work-order-utils";
 
+import { PARTNER_SELF_SERVICE_WORKFLOW_ENABLED } from "@/lib/partner-workflow-config";
+
 /** 담당자 — 파트너 승인 후 확인 · 업무 반영 */
 export function StaffWorkConfirmPanel({ className }: { className?: string }) {
+  if (!PARTNER_SELF_SERVICE_WORKFLOW_ENABLED) return null;
   const data = useData();
   const { currentUser, activeRole } = useRole();
   const { confirmWorkOrderByStaff, rejectWorkOrderByStaff } = useWorkOrders();

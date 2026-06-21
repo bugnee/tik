@@ -6,7 +6,9 @@ import { ArrowLeft } from "lucide-react";
 import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
 import { ActivityRegistryPanel } from "@/components/experience/ActivityRegistryPanel";
+import { PublicCatalogExportButton } from "@/components/experience/ExperiencePublicListingEditor";
 import { PageHeader } from "@/components/ui/DataTable";
+import { copyPublicCatalogToClipboard } from "@/lib/public-catalog-utils";
 import type { UserRole } from "@/lib/types";
 
 const EXPERIENCE_REGISTRY_ROLES: UserRole[] = [
@@ -37,13 +39,18 @@ export function ExperiencePage() {
         title="활동"
         description="전체 고객사 활동 · 체험단·업무·집행·Q&A · 일정 조회"
         action={
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-cyan-400"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            대시보드
-          </Link>
+          <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+            <PublicCatalogExportButton
+              onExport={() => copyPublicCatalogToClipboard(data)}
+            />
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-cyan-400"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              대시보드
+            </Link>
+          </div>
         }
       />
 

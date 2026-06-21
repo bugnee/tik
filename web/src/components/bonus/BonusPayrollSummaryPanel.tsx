@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Users } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { Input } from "@/components/ui/FormFields";
+import { MonthPickerInput } from "@/components/ui/MonthPickerInput";
 import { SortableTh } from "@/components/ui/DataTable";
 import { StatCard } from "@/components/ui/StatCard";
 import { useData } from "@/context/DataContext";
@@ -100,11 +100,10 @@ export function BonusPayrollSummaryPanel() {
       />
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <Input
+        <MonthPickerInput
           label="조회 월 (급여 합산월)"
-          type="month"
           value={selectedMonth}
-          onChange={(e) => setSelectedMonth(e.target.value)}
+          onChange={setSelectedMonth}
           className="w-44"
         />
         <div className="flex flex-wrap gap-2 pb-1">

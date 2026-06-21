@@ -4,6 +4,7 @@ import { useData } from "@/context/DataContext";
 import { useFormDirty } from "@/hooks/useFormDirty";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Input, Select, Textarea } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
@@ -44,6 +45,14 @@ export function ContractExecutionModal({
   const typeLabels = getExecutionTypeLabels(data);
   const contract = data.contracts.find((c) => c.id === form.contractId) ?? null;
   const formDirty = useFormDirty(open, editing?.id ?? "create", form);
+  const saveMeta = useSaveMeta(
+    editing?.enteredAt ? { savedAt: editing.enteredAt } : null,
+  );
+
+  function handleSubmit(e: React.FormEvent) {
+    onSubmit(e);
+    saveMeta.recordSave();
+  }
 
   return (
     <Modal
@@ -51,7 +60,7 @@ export function ContractExecutionModal({
       onClose={onClose}
       title={editing ? "실행 수정" : "실행 등록"}
     >
-      <form onSubmit={onSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Select
             label="유형"
@@ -123,7 +132,12 @@ export function ContractExecutionModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             취소
           </Button>
-          <SaveButton type="submit" dirty={formDirty}>
+          <SaveButton
+            type="submit"
+            dirty={formDirty}
+            savedAt={saveMeta.savedAt}
+            savedBy={saveMeta.savedBy}
+          >
             {editing ? "저장" : "등록"}
           </SaveButton>
         </div>
@@ -150,6 +164,12 @@ export function ContractExpenseModal({
   const { expenseCategories } = useData();
   const categories = getActiveExpenseCategories(expenseCategories);
   const formDirty = useFormDirty(open, editing?.id ?? "create", form);
+  const saveMeta = useSaveMeta();
+
+  function handleSubmit(e: React.FormEvent) {
+    onSubmit(e);
+    saveMeta.recordSave();
+  }
 
   return (
     <Modal
@@ -157,7 +177,7 @@ export function ContractExpenseModal({
       onClose={onClose}
       title={editing ? "원가 수정" : "원가 등록"}
     >
-      <form onSubmit={onSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Select
             label="카테고리"
@@ -222,7 +242,12 @@ export function ContractExpenseModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             취소
           </Button>
-          <SaveButton type="submit" dirty={formDirty}>
+          <SaveButton
+            type="submit"
+            dirty={formDirty}
+            savedAt={saveMeta.savedAt}
+            savedBy={saveMeta.savedBy}
+          >
             {editing ? "저장" : "등록"}
           </SaveButton>
         </div>

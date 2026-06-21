@@ -11,8 +11,10 @@ import type {
   UserRole,
 } from "./types";
 import { isLeaderManagedContract } from "./contract-access-utils";
+import { getPartnerCollaborationContractIds } from "./partner-collaboration-utils";
 import { calcBonusAmounts, isBonusEligible } from "./bonus-utils";
 import { migratePostLinks } from "./execution-utils";
+import { dedupeContractExecutions } from "./execution-generation-utils";
 import {
   calcContractWorkProgress,
   filterWorkOrdersByContract,
@@ -117,9 +119,8 @@ export function filterContractsByRole(
       const user = data.users.find((u) => u.id === userId);
       const partnerId = user?.partnerId;
       if (!partnerId) return [];
-      return data.contracts.filter(
-        (c) => c.hasReferralPromo && c.referrerPartnerId === partnerId,
-      );
+      const ids = new Set(getPartnerCollaborationContractIds(data, partnerId));
+      return data.contracts.filter((c) => ids.has(c.id));
     }
     case "client": {
       const contractId = data.users.find((u) => u.id === userId)?.contractId;
@@ -337,6 +338,21 @@ export function getContractExecutions(data: AppData, contractId: string) {
   return data.executions.filter((e) => e.contractId === contractId);
 }
 
+/** 채널 키 기준 중복 제거된 계약 실행 목록 */
+export function getContractExecutionsDeduped(
+  data: AppData,
+  contractId: string,
+): Execution[] {
+  const contract = data.contracts.find((c) => c.id === contractId);
+  if (!contract) return [];
+  return dedupeContractExecutions(
+    data.executions,
+    contractId,
+    contract,
+    data.taskChannels,
+  ).filter((e) => e.contractId === contractId);
+}
+
 export function getContractExpenses(data: AppData, contractId: string) {
   return data.expenses.filter((e) => e.contractId === contractId);
 }
@@ -358,6 +374,15 @@ export function getContractExtensionApproval(
   contractId: string,
 ) {
   return [...data.extensionApprovals]
+    .filter((a) => a.contractId === contractId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+}
+
+export function getContractTermsApproval(
+  data: AppData,
+  contractId: string,
+) {
+  return [...(data.contractTermsApprovals ?? [])]
     .filter((a) => a.contractId === contractId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
 }

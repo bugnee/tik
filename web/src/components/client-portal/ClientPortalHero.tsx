@@ -36,7 +36,7 @@ export function ClientPortalHero({
           <div className="flex items-center gap-2 text-emerald-300/90">
             <Sparkles className="h-4 w-4" />
             <p className="text-xs font-semibold uppercase tracking-wider">
-              TRIP IT KOREA · 고객사 포털
+              트립잇코리아 · 고객사 포털
             </p>
           </div>
           <h1 className="mt-3 text-2xl font-bold tracking-tight text-zinc-50 sm:text-3xl">

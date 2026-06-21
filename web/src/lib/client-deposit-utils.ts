@@ -10,7 +10,7 @@ import {
 export const DEFAULT_CLIENT_DEPOSIT_ACCOUNT = {
   bankName: "국민은행",
   accountNumber: "737801-04-203835",
-  accountHolder: "주식회사 트립잇코리아",
+  accountHolder: "(주)TripItKorea",
 } as const;
 
 export interface ClientDepositRequestInfo {

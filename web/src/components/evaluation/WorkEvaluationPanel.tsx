@@ -9,6 +9,7 @@ import { useRole } from "@/context/RoleContext";
 import { evaluationPeriodFromDashboard } from "@/lib/dashboard-period-utils";
 import { Badge } from "@/components/ui/Badge";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Select, Textarea } from "@/components/ui/FormFields";
 import {
@@ -219,6 +220,15 @@ function EvaluatorView({
     : undefined;
 
   const [comment, setComment] = useState(existing?.comment ?? "");
+  const evaluationDirty = !existing || comment !== (existing.comment ?? "");
+  const saveMeta = useSaveMeta(
+    existing?.updatedAt
+      ? {
+          savedAt: existing.updatedAt,
+          savedByUserId: existing.evaluatorId,
+        }
+      : null,
+  );
 
   function selectTarget(targetId: string) {
     setSelectedId(targetId);
@@ -243,6 +253,7 @@ function EvaluatorView({
       },
       comment.trim() || undefined,
     );
+    saveMeta.recordSave();
   }
 
   if (targets.length === 0 || !selected || !draft) {
@@ -255,7 +266,6 @@ function EvaluatorView({
 
   const displayOverall = calcOverallScore(draft.scores);
   const overallGrade = getOverallEvaluationGrade(displayOverall);
-  const evaluationDirty = !existing || comment !== (existing.comment ?? "");
 
   return (
     <div className="space-y-4">
@@ -330,7 +340,13 @@ function EvaluatorView({
           placeholder="자동 평가 확인 메모"
         />
         <div className="mt-4 flex justify-end">
-          <SaveButton type="button" dirty={evaluationDirty} onClick={handleSave}>
+          <SaveButton
+            type="button"
+            dirty={evaluationDirty}
+            onClick={handleSave}
+            savedAt={saveMeta.savedAt}
+            savedBy={saveMeta.savedBy}
+          >
             {existing ? "평가 갱신" : "평가 저장"}
           </SaveButton>
         </div>

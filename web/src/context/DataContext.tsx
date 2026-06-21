@@ -43,6 +43,7 @@ import type {
   Expense,
   ExpenseInput,
   ExtensionApproval,
+  ContractTermsApproval,
   FundBudget,
   Partner,
   PartnerInput,
@@ -117,6 +118,7 @@ import {
   applyFullContractSync,
   commitAppData,
 } from "@/core/domain/commit-app-data";
+import { purgePartnerFromAppData } from "@/core/domain/cascade-delete";
 import { newId } from "@/core/data/new-id";
 import { todayISO } from "@/core/data/date";
 import { createContractStore } from "@/features/contracts/create-contract-store";
@@ -215,6 +217,14 @@ interface DataContextValue extends AppData {
   approveExtension: (approvalId: string) => void;
   rejectExtension: (approvalId: string) => void;
   requestExtension: (contractId: string, requestedBy: string) => boolean;
+  requestContractTermsApproval: (
+    contractId: string,
+    requestedBy: string,
+    mode: import("@/lib/contract-terms-utils").ContractTermsChangeMode,
+    proposedValues: import("@/lib/contract-terms-utils").ContractTermsFormValues,
+  ) => boolean;
+  approveContractTermsApproval: (approvalId: string, reviewerId: string) => void;
+  rejectContractTermsApproval: (approvalId: string, reviewerId: string) => void;
   requestExpensePayout: (expenseId: string, requestedBy: string) => boolean;
   approveExpensePayout: (expenseId: string, approverId: string) => boolean;
   rejectExpensePayout: (expenseId: string, approverId: string) => boolean;
@@ -352,12 +362,12 @@ interface DataContextValue extends AppData {
   acceptExperienceParticipationProposal: (
     proposalId: string,
     staffUserId: string,
-    reviewNote?: string,
+    staffReviewMemo?: string,
   ) => boolean;
   rejectExperienceParticipationProposal: (
     proposalId: string,
     staffUserId: string,
-    reviewNote?: string,
+    staffReviewMemo?: string,
   ) => boolean;
   addContractMemo: (contractId: string, body: string, authorUserId: string) => ContractMemo | null;
   deleteContractMemo: (id: string) => void;
@@ -563,6 +573,8 @@ function normalizeAppData(data: AppData): AppData {
       withClients.clientPortalActionDismissals ??
       seed.clientPortalActionDismissals ??
       [],
+    contractTermsApprovals:
+      withClients.contractTermsApprovals ?? seed.contractTermsApprovals ?? [],
   };
   return applyJejuOseongOperationalSample(normalized);
 }
@@ -680,6 +692,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     requestExtension,
     approveExtension,
     rejectExtension,
+    requestContractTermsApproval,
+    approveContractTermsApproval,
+    rejectContractTermsApproval,
     addExecution,
     updateExecution,
     deleteExecution,
@@ -913,24 +928,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const deletePartner = useCallback(
     (id: string) => {
-      persist((prev) => ({
-        ...prev,
-        partners: prev.partners.filter((p) => p.id !== id),
-        expenses: prev.expenses.map((e) =>
-          e.partnerId === id ? { ...e, partnerId: undefined } : e,
-        ),
-        workOrders: prev.workOrders.map((w) =>
-          w.partnerId === id ? { ...w, partnerId: undefined } : w,
-        ),
-        partnerReferralLeads: (prev.partnerReferralLeads ?? []).filter(
-          (lead) => lead.partnerId !== id,
-        ),
-        contracts: prev.contracts.map((c) =>
-          c.referrerPartnerId === id
-            ? { ...c, referrerPartnerId: undefined, hasReferralPromo: false }
-            : c,
-        ),
-      }));
+      persist((prev) => purgePartnerFromAppData(prev, id));
     },
     [persist],
   );
@@ -1468,6 +1466,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       approveExtension,
       rejectExtension,
       requestExtension,
+      requestContractTermsApproval,
+      approveContractTermsApproval,
+      rejectContractTermsApproval,
       requestExpensePayout,
       approveExpensePayout,
       rejectExpensePayout,
@@ -1566,6 +1567,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       approveExtension,
       rejectExtension,
       requestExtension,
+      requestContractTermsApproval,
+      approveContractTermsApproval,
+      rejectContractTermsApproval,
       requestExpensePayout,
       approveExpensePayout,
       rejectExpensePayout,
@@ -1649,4 +1653,4 @@ export function useData() {
   return ctx;
 }
 
-export type { ExtensionApproval };
+export type { ContractTermsApproval, ExtensionApproval };

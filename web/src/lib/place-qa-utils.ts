@@ -6,6 +6,7 @@ import type {
   UserRole,
 } from "./types";
 import { canRoleViewContract } from "./contract-access-utils";
+import { getPartnerCollaborationContractIds } from "./partner-collaboration-utils";
 import {
   countPostLinkOpinionsForContract,
   getPostLinkOpinionsForContract,
@@ -26,6 +27,14 @@ export function isInternalQaRole(role: UserRole): boolean {
 
 export function isClientQaRole(role: UserRole): boolean {
   return role === "client";
+}
+
+export function isPartnerQaRole(role: UserRole): boolean {
+  return role === "partner";
+}
+
+export function isExternalQaRole(role: UserRole | undefined): boolean {
+  return role === "client" || role === "partner";
 }
 
 export interface QaDashboardStats {
@@ -88,7 +97,11 @@ export function threadNeedsStaffReply(
   const messages = getMessagesForThread(data, thread.id);
   if (messages.length === 0) return true;
   const last = messages[messages.length - 1];
-  return getAuthorRole(data, last.authorUserId) === "client";
+  return isExternalQaAuthor(data, last.authorUserId);
+}
+
+function isExternalQaAuthor(data: AppData, userId: string): boolean {
+  return isExternalQaRole(getAuthorRole(data, userId));
 }
 
 /** 담당업무(역할별 계약 조회 범위) 내 Q&A 접근 가능 여부 */
@@ -106,6 +119,14 @@ export function canAccessQaContract(
     return linkedId === contractId;
   }
 
+  if (role === "partner") {
+    const partnerId = data.users.find((u) => u.id === userId)?.partnerId;
+    if (!partnerId) return false;
+    return getPartnerCollaborationContractIds(data, partnerId).includes(
+      contractId,
+    );
+  }
+
   return canRoleViewContract(data, contract, role, userId);
 }
 
@@ -117,16 +138,28 @@ export function canReplyQa(
   contractId: string,
 ): boolean {
   if (!canAccessQaContract(data, role, userId, contractId)) return false;
-  return isClientQaRole(role) || isInternalQaRole(role);
+  return isClientQaRole(role) || isPartnerQaRole(role) || isInternalQaRole(role);
 }
 
+/** 고객사·파트너 — 새 문의 스레드 등록 */
+export function canCreateQaThread(
+  data: AppData,
+  role: UserRole,
+  userId: string,
+  contractId: string,
+): boolean {
+  if (!canAccessQaContract(data, role, userId, contractId)) return false;
+  return isClientQaRole(role) || isPartnerQaRole(role);
+}
+
+/** @deprecated canCreateQaThread 사용 */
 export function canCreateClientQaThread(
   data: AppData,
   role: UserRole,
   userId: string,
   contractId: string,
 ): boolean {
-  return role === "client" && canAccessQaContract(data, role, userId, contractId);
+  return canCreateQaThread(data, role, userId, contractId);
 }
 
 export function getQaScopeHint(role: UserRole): string {
@@ -142,6 +175,8 @@ export function getQaScopeHint(role: UserRole): string {
       return "전체 고객사 문의에 답변할 수 있습니다.";
     case "client":
       return "담당 매니저에게 문의를 남길 수 있습니다.";
+    case "partner":
+      return "협업 업체와 담당자에게 문의를 남길 수 있습니다. (조회 전용 · 소통)";
     default:
       return "";
   }
@@ -152,6 +187,11 @@ export function getVisibleContractIds(
   role: UserRole,
   userId: string,
 ): string[] {
+  if (role === "partner") {
+    const partnerId = data.users.find((u) => u.id === userId)?.partnerId;
+    if (!partnerId) return [];
+    return getPartnerCollaborationContractIds(data, partnerId);
+  }
   return filterContractsByRole(data, role, userId)
     .filter((c) => c.status === "active")
     .map((c) => c.id);
@@ -239,11 +279,13 @@ export function canViewPlacePassword(role: UserRole): boolean {
 }
 
 export function canParticipateQa(role: UserRole): boolean {
-  return isClientQaRole(role) || isInternalQaRole(role);
+  return (
+    isClientQaRole(role) || isPartnerQaRole(role) || isInternalQaRole(role)
+  );
 }
 
 export function canCloseQaThread(role: UserRole): boolean {
-  return role !== "client";
+  return isInternalQaRole(role);
 }
 
 export function getContractForQa(
@@ -261,5 +303,11 @@ export function formatQaParticipant(
   const user = data.users.find((u) => u.id === userId);
   if (!user) return "-";
   if (user.role === "client") return contract?.clientName ?? "고객사";
+  if (user.role === "partner") {
+    const partner = user.partnerId
+      ? data.partners.find((p) => p.id === user.partnerId)
+      : undefined;
+    return partner?.companyName ?? "파트너";
+  }
   return getUserName(data, userId);
 }

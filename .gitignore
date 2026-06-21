@@ -7,11 +7,16 @@ prisma/dev.db
 prisma/dev.db-journal
 .tools/
 
-# Next.js (web/)
+# Next.js (web/, web-public/)
 web/.next/
 web/out/
 web/.vercel/
 web/node_modules/
+web-public/.next/
+web-public/out/
+web-public/.vercel/
+web-public/node_modules/
+packages/*/node_modules/
 
 # OS / editor
 .DS_Store

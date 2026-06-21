@@ -110,7 +110,7 @@ export function PartnerDetailView({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-cyan-300/80">
-                TRIP IT KOREA · 파트너 포털
+                트립잇코리아 · 파트너 포털
               </p>
               <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-50 sm:text-3xl">
                 {partner.companyName}

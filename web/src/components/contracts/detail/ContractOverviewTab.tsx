@@ -10,6 +10,7 @@ import { QaConversationPanel } from "@/components/place-qa/QaConversationPanel";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/DataTable";
 import { Input } from "@/components/ui/FormFields";
@@ -85,6 +86,18 @@ export function ContractOverviewTab({
   onOpenTermsModal: (mode: "amend" | "renewal") => void;
   expectedPct: number | null;
 }) {
+  const saveMeta = useSaveMeta();
+
+  function handleSaveDeposit() {
+    const date = depositDraft || contract.lastClientDepositDate;
+    if (!date) {
+      onSaveDeposit();
+      return;
+    }
+    onSaveDeposit();
+    saveMeta.recordSave();
+  }
+
   return (
     <>
       {canViewFinancials && contract.status === "active" && (
@@ -101,7 +114,13 @@ export function ContractOverviewTab({
               onChange={(e) => onDepositDraftChange(e.target.value)}
               className="max-w-xs"
             />
-            <SaveButton size="sm" dirty={depositDirty} onClick={onSaveDeposit}>
+            <SaveButton
+              size="sm"
+              dirty={depositDirty}
+              onClick={handleSaveDeposit}
+              savedAt={saveMeta.savedAt}
+              savedBy={saveMeta.savedBy}
+            >
               저장
             </SaveButton>
             {contract.lastClientDepositDate && scheduledBonusPayDate && (
