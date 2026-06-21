@@ -35,7 +35,9 @@ import { SaveButton } from "@/components/ui/SaveButton";
 import { useSaveMeta } from "@/hooks/useSaveMeta";
 import { valuesEqual } from "@/lib/form-dirty";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { PageHeader, SearchBar } from "@/components/ui/DataTable";
+import { PageHeader } from "@/components/ui/DataTable";
+import { ListToolbar } from "@/components/ui/ListToolbar";
+import { LIST_SEARCH_PLACEHOLDERS } from "@/lib/list-ui-consistency";
 import { Input, Select, Checkbox } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
 import { TabBar } from "@/components/ui/TabBar";
@@ -87,23 +89,7 @@ import {
 } from "@/lib/execution-period-utils";
 import { skipPartnerApprovalStages } from "@/lib/partner-workflow-config";
 import { getWorkOrderNextActionHint } from "@/lib/staff-daily-workflow-utils";
-
-const STAGE_VARIANT: Record<
-  WorkOrder["stage"],
-  "default" | "warning" | "success" | "danger" | "info"
-> = {
-  draft: "default",
-  pending_approval: "warning",
-  pending_staff_confirm: "warning",
-  approved: "info",
-  delivered: "warning",
-  paid: "success",
-  order_ready: "success",
-  rejected: "danger",
-  cancelled: "default",
-  on_hold: "warning",
-  postponed: "warning",
-};
+import { WORK_ORDER_STAGE_BADGE_VARIANT } from "@/lib/work-order-utils";
 
 /** 취소·보류·연기 가능 단계 */
 const PAUSABLE_STAGES: WorkOrder["stage"][] = [
@@ -597,10 +583,10 @@ export function ExecutionProgressManager() {
           <Card className="mb-4 p-4">
             <div className="space-y-3">
               <div className="w-full [&_input]:max-w-none">
-                <SearchBar
-                  value={contractSearch}
-                  onChange={setContractSearch}
-                  placeholder="업체명 · 담당자 검색"
+                <ListToolbar
+                  search={contractSearch}
+                  onSearchChange={setContractSearch}
+                  searchPlaceholder={LIST_SEARCH_PLACEHOLDERS.workOrders}
                 />
               </div>
               <Select
@@ -766,7 +752,7 @@ export function ExecutionProgressManager() {
                             data={data}
                             taskType={row.order.taskType}
                           />
-                          <Badge variant={STAGE_VARIANT[row.order.stage]}>
+                          <Badge variant={WORK_ORDER_STAGE_BADGE_VARIANT[row.order.stage]}>
                             {getWorkOrderStageLabel(row.order, contract)}
                           </Badge>
                         </div>

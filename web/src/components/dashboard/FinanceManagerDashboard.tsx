@@ -13,7 +13,16 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { SortableTh } from "@/components/ui/DataTable";
+import { SortableTh, DataTable, Td, Th, Tr, EmptyState } from "@/components/ui/DataTable";
+import { ListToolbar } from "@/components/ui/ListToolbar";
+import { useSortedItems, useTableSort } from "@/hooks/useTableSort";
+import {
+  compareNumbers,
+  compareStrings,
+  LIST_SEARCH_PLACEHOLDERS,
+  matchesListSearch,
+  PAYOUT_BADGE_VARIANT,
+} from "@/lib/list-ui-consistency";
 import { StatCard } from "@/components/ui/StatCard";
 import { DashboardHeader } from "@/components/dashboard/StaffDashboard";
 import { RoleOnboardingPanel } from "@/components/dashboard/RoleOnboardingPanel";
@@ -404,43 +413,52 @@ function ExpensePayoutQueue({
   onDeductBudget: (amount: number) => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [sortKey, setSortKey] = useState<PayoutQueueSortKey>("payoutRequestedAt");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [search, setSearch] = useState("");
+  const { sortKey, sortDir, sortProps } = useTableSort<PayoutQueueSortKey>(
+    "payoutRequestedAt",
+    "desc",
+  );
 
-  const sorted = useMemo(() => {
-    return [...expenses].sort((a, b) => {
-      let cmp = 0;
-      switch (sortKey) {
+  const filtered = useMemo(
+    () =>
+      expenses.filter((e) =>
+        matchesListSearch(
+          search,
+          e.clientName,
+          e.description,
+          e.categoryLabel,
+          e.accountHolder,
+          e.bankAccount,
+          e.bankName,
+        ),
+      ),
+    [expenses, search],
+  );
+
+  const sorted = useSortedItems(
+    filtered,
+    sortKey,
+    sortDir,
+    (a, b, key) => {
+      switch (key) {
         case "clientName":
-          cmp = a.clientName.localeCompare(b.clientName, "ko");
-          break;
+          return compareStrings(a.clientName, b.clientName);
         case "categoryLabel":
-          cmp = a.categoryLabel.localeCompare(b.categoryLabel, "ko");
-          break;
+          return compareStrings(a.categoryLabel, b.categoryLabel);
         case "payoutRequestedAt":
-          cmp = (a.payoutRequestedAt ?? "").localeCompare(
+          return compareStrings(
+            a.payoutRequestedAt ?? "",
             b.payoutRequestedAt ?? "",
           );
-          break;
         case "amount":
-          cmp = a.amount - b.amount;
-          break;
+          return compareNumbers(a.amount, b.amount);
         case "payoutStatus":
-          cmp = a.payoutStatus.localeCompare(b.payoutStatus);
-          break;
+          return compareStrings(a.payoutStatus, b.payoutStatus);
+        default:
+          return 0;
       }
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-  }, [expenses, sortKey, sortDir]);
-
-  function toggleSort(key: PayoutQueueSortKey) {
-    if (sortKey === key) {
-      setSortDir((dir) => (dir === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
-  }
+    },
+  );
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -516,115 +534,97 @@ function ExpensePayoutQueue({
           </div>
         }
       />
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-              <th className="pb-3 pr-3">
+
+      <ListToolbar
+        className="mb-4 px-1"
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder={LIST_SEARCH_PLACEHOLDERS.payoutQueue}
+        showSortHint
+      />
+
+      <DataTable>
+        <thead>
+          <tr>
+            <Th className="w-10">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleAll}
+                aria-label="전체 선택"
+                className="rounded border-zinc-600 bg-zinc-800 text-emerald-500"
+              />
+            </Th>
+            <SortableTh className="pr-4" {...sortProps("clientName")}>
+              업체
+            </SortableTh>
+            <SortableTh className="pr-4" {...sortProps("categoryLabel")}>
+              카테고리
+            </SortableTh>
+            <SortableTh className="pr-4" {...sortProps("payoutRequestedAt")}>
+              입금요청일
+            </SortableTh>
+            <Th className="pr-4">은행 · 계좌</Th>
+            <SortableTh className="pr-4" {...sortProps("amount")}>
+              금액
+            </SortableTh>
+            <SortableTh {...sortProps("payoutStatus")}>상태</SortableTh>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((e) => (
+            <Tr key={e.id}>
+              <Td className="pr-3">
                 <input
                   type="checkbox"
-                  checked={allSelected}
-                  onChange={toggleAll}
-                  aria-label="전체 선택"
+                  checked={selected.has(e.id)}
+                  onChange={() => toggle(e.id)}
                   className="rounded border-zinc-600 bg-zinc-800 text-emerald-500"
                 />
-              </th>
-              <SortableTh
-                className="pb-3 pr-4"
-                active={sortKey === "clientName"}
-                direction={sortDir}
-                onClick={() => toggleSort("clientName")}
-              >
-                업체
-              </SortableTh>
-              <SortableTh
-                className="pb-3 pr-4"
-                active={sortKey === "categoryLabel"}
-                direction={sortDir}
-                onClick={() => toggleSort("categoryLabel")}
-              >
-                카테고리
-              </SortableTh>
-              <SortableTh
-                className="pb-3 pr-4"
-                active={sortKey === "payoutRequestedAt"}
-                direction={sortDir}
-                onClick={() => toggleSort("payoutRequestedAt")}
-              >
-                입금요청일
-              </SortableTh>
-              <th className="pb-3 pr-4 font-medium">은행 · 계좌</th>
-              <SortableTh
-                className="pb-3 pr-4"
-                active={sortKey === "amount"}
-                direction={sortDir}
-                onClick={() => toggleSort("amount")}
-              >
-                금액
-              </SortableTh>
-              <SortableTh
-                className="pb-3"
-                active={sortKey === "payoutStatus"}
-                direction={sortDir}
-                onClick={() => toggleSort("payoutStatus")}
-              >
-                상태
-              </SortableTh>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((e) => (
-              <tr
-                key={e.id}
-                className="border-b border-zinc-800/40 text-zinc-400"
-              >
-                <td className="py-3 pr-3">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(e.id)}
-                    onChange={() => toggle(e.id)}
-                    className="rounded border-zinc-600 bg-zinc-800 text-emerald-500"
-                  />
-                </td>
-                <td className="py-3 pr-4">
-                  <p className="font-medium text-zinc-200">{e.clientName}</p>
-                  <p className="text-xs text-zinc-600">{e.description}</p>
-                </td>
-                <td className="py-3 pr-4">{e.categoryLabel}</td>
-                <td className="py-3 pr-4 font-mono text-zinc-300">
-                  {e.payoutRequestedAt ?? "-"}
-                </td>
-                <td className="py-3 pr-4 font-mono text-xs">
-                  <p className="text-zinc-200">
-                    {e.bankName ? (
-                      <>
-                        <span className="text-zinc-400">{e.bankName}</span>{" "}
-                        {e.bankAccount}
-                      </>
-                    ) : (
-                      e.bankAccount
-                    )}
-                  </p>
-                  <p className="mt-0.5 text-zinc-600">{e.accountHolder}</p>
-                </td>
-                <td className="py-3 pr-4 font-mono text-zinc-200">
-                  {formatKRW(e.amount)}
-                </td>
-                <td className="py-3">
-                  <Badge variant="warning">
-                    {PAYOUT_LABELS[e.payoutStatus]}
-                  </Badge>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {expenses.length === 0 && (
-          <p className="py-10 text-center text-sm text-zinc-500">
-            지급 대기 원가가 없습니다
-          </p>
-        )}
-      </div>
+              </Td>
+              <Td className="pr-4">
+                <p className="font-medium text-zinc-200">{e.clientName}</p>
+                <p className="text-xs text-zinc-600">{e.description}</p>
+              </Td>
+              <Td className="pr-4">{e.categoryLabel}</Td>
+              <Td className="pr-4 font-mono text-zinc-300">
+                {e.payoutRequestedAt ?? "-"}
+              </Td>
+              <Td className="pr-4 font-mono text-xs">
+                <p className="text-zinc-200">
+                  {e.bankName ? (
+                    <>
+                      <span className="text-zinc-400">{e.bankName}</span>{" "}
+                      {e.bankAccount}
+                    </>
+                  ) : (
+                    e.bankAccount
+                  )}
+                </p>
+                <p className="mt-0.5 text-zinc-600">{e.accountHolder}</p>
+              </Td>
+              <Td className="pr-4 font-mono text-zinc-200">
+                {formatKRW(e.amount)}
+              </Td>
+              <Td>
+                <Badge variant={PAYOUT_BADGE_VARIANT[e.payoutStatus]}>
+                  {PAYOUT_LABELS[e.payoutStatus]}
+                </Badge>
+              </Td>
+            </Tr>
+          ))}
+        </tbody>
+      </DataTable>
+
+      {sorted.length === 0 ? (
+        <EmptyState
+          message={
+            search.trim()
+              ? "검색 결과가 없습니다"
+              : "지급 대기 원가가 없습니다"
+          }
+        />
+      ) : null}
     </Card>
   );
 }

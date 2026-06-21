@@ -23,11 +23,12 @@ import {
   DataTable,
   EmptyState,
   PageHeader,
-  SearchBar,
   Td,
   Th,
   Tr,
 } from "@/components/ui/DataTable";
+import { ListToolbar } from "@/components/ui/ListToolbar";
+import { LIST_SEARCH_PLACEHOLDERS } from "@/lib/list-ui-consistency";
 import { Input, Select, Textarea } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
 import { RegionSelect } from "@/components/location/RegionSelect";
@@ -260,30 +261,34 @@ export function PartnersManager() {
         ))}
       </div>
 
-      <Card className="mb-4 flex flex-wrap items-center gap-3">
-        <SearchBar
-          value={search}
-          onChange={setSearch}
-          placeholder="업체명 · 담당 · 메모 · 계좌 · 지역 검색"
+      <Card className="mb-4">
+        <ListToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder={LIST_SEARCH_PLACEHOLDERS.partners}
+          filters={
+            <>
+              {tab !== "all" && (
+                <button
+                  type="button"
+                  onClick={() => setTab("all")}
+                  className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
+                >
+                  {TAB_CONFIG.find((t) => t.key === tab)?.label} 필터 · 전체 보기
+                </button>
+              )}
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={showInactive}
+                  onChange={(e) => setShowInactive(e.target.checked)}
+                  className="rounded border-zinc-600"
+                />
+                종료·불가 포함
+              </label>
+            </>
+          }
         />
-        {tab !== "all" && (
-          <button
-            type="button"
-            onClick={() => setTab("all")}
-            className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
-          >
-            {TAB_CONFIG.find((t) => t.key === tab)?.label} 필터 · 전체 보기
-          </button>
-        )}
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-400">
-          <input
-            type="checkbox"
-            checked={showInactive}
-            onChange={(e) => setShowInactive(e.target.checked)}
-            className="rounded border-zinc-600"
-          />
-          종료·불가 포함
-        </label>
       </Card>
 
       <DataTable>

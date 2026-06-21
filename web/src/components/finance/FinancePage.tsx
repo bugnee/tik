@@ -21,6 +21,7 @@ import {
 } from "@/lib/finance";
 import { enrichExpense } from "@/lib/selectors";
 import { getFinancePayoutQueue } from "@/lib/expense-payout-utils";
+import { PAYOUT_BADGE_VARIANT } from "@/lib/list-ui-consistency";
 import { PAYOUT_LABELS } from "@/lib/types";
 import Link from "next/link";
 import { FinanceManagerDashboard } from "@/components/dashboard/FinanceManagerDashboard";
@@ -340,7 +341,7 @@ function SettlementChecklist({
                   <span className="text-zinc-600">{e.accountHolder}</span>
                 </td>
                 <td className="py-3">
-                  <Badge variant="warning">
+                  <Badge variant={PAYOUT_BADGE_VARIANT[e.payoutStatus]}>
                     {PAYOUT_LABELS[e.payoutStatus]}
                   </Badge>
                 </td>

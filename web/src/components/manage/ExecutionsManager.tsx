@@ -12,11 +12,12 @@ import {
   DataTable,
   EmptyState,
   PageHeader,
-  SearchBar,
   Td,
   Th,
   Tr,
 } from "@/components/ui/DataTable";
+import { ListToolbar } from "@/components/ui/ListToolbar";
+import { LIST_SEARCH_PLACEHOLDERS } from "@/lib/list-ui-consistency";
 import { Input, Select, Textarea } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
 import { PostLinksCell, PostLinksField } from "@/components/executions/PostLinksField";
@@ -141,20 +142,28 @@ export function ExecutionsManager() {
         }
       />
 
-      <Card className="mb-4 flex flex-wrap items-center gap-3">
-        <SearchBar value={search} onChange={setSearch} placeholder="업체 · 유형 검색" />
-        <Select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="w-36"
-        >
-          <option value="all">전체 상태</option>
-          {(Object.keys(EXECUTION_STATUS_LABELS) as ExecutionStatus[]).map((s) => (
-            <option key={s} value={s}>
-              {EXECUTION_STATUS_LABELS[s]}
-            </option>
-          ))}
-        </Select>
+      <Card className="mb-4">
+        <ListToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder={LIST_SEARCH_PLACEHOLDERS.executions}
+          filters={
+            <Select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="w-36"
+            >
+              <option value="all">전체 상태</option>
+              {(Object.keys(EXECUTION_STATUS_LABELS) as ExecutionStatus[]).map(
+                (s) => (
+                  <option key={s} value={s}>
+                    {EXECUTION_STATUS_LABELS[s]}
+                  </option>
+                ),
+              )}
+            </Select>
+          }
+        />
       </Card>
 
       <DataTable>

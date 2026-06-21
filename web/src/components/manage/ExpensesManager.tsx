@@ -14,11 +14,22 @@ import {
   DataTable,
   EmptyState,
   PageHeader,
-  SearchBar,
+  SortableTh,
   Td,
   Th,
   Tr,
 } from "@/components/ui/DataTable";
+import { FilterChipGroup } from "@/components/ui/FilterChipGroup";
+import { ListToolbar } from "@/components/ui/ListToolbar";
+import { useSortedItems, useTableSort } from "@/hooks/useTableSort";
+import {
+  compareNumbers,
+  compareStrings,
+  LIST_SEARCH_PLACEHOLDERS,
+  matchesListSearch,
+  PAYOUT_BADGE_VARIANT,
+  PAYOUT_FILTER_TONE,
+} from "@/lib/list-ui-consistency";
 import { Input, Select } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
 import { PeriodFilterBar } from "@/components/ui/PeriodFilterBar";
@@ -48,15 +59,13 @@ import { PAYOUT_LABELS } from "@/lib/types";
 import { useFormDirty } from "@/hooks/useFormDirty";
 import { cn } from "@/lib/cn";
 
-const PAYOUT_VARIANT: Record<
-  PayoutStatus,
-  "danger" | "warning" | "success" | "info"
-> = {
-  unpaid: "danger",
-  pending_approval: "info",
-  pending_transfer: "warning",
-  paid: "success",
-};
+type ExpenseSortKey =
+  | "clientName"
+  | "partnerName"
+  | "categoryLabel"
+  | "paymentDueDate"
+  | "amount"
+  | "payoutStatus";
 
 const emptyForm = (): ExpenseInput => ({
   contractId: "",
@@ -88,7 +97,11 @@ export function ExpensesManager() {
   const { contracts, partners, expenseCategories, partnerFilterDefinitions } =
     data;
   const [search, setSearch] = useState("");
-  const [filterPayout, setFilterPayout] = useState<string>("all");
+  const [filterPayout, setFilterPayout] = useState<PayoutStatus | "all">("all");
+  const { sortKey, sortDir, sortProps } = useTableSort<ExpenseSortKey>(
+    "paymentDueDate",
+    "desc",
+  );
   const [periodFilter, setPeriodFilter] = useState(createDefaultPeriodFilter);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -106,18 +119,59 @@ export function ExpensesManager() {
   );
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
     return enriched.filter((e) => {
-      const matchSearch =
-        e.clientName.toLowerCase().includes(q) ||
-        e.description.toLowerCase().includes(q) ||
-        e.accountHolder.toLowerCase().includes(q) ||
-        e.partnerName.toLowerCase().includes(q);
-      const matchPayout = filterPayout === "all" || e.payoutStatus === filterPayout;
+      const matchSearch = matchesListSearch(
+        search,
+        e.clientName,
+        e.description,
+        e.accountHolder,
+        e.partnerName,
+        e.bankAccount,
+        e.bankName,
+      );
+      const matchPayout =
+        filterPayout === "all" || e.payoutStatus === filterPayout;
       const matchPeriod = matchesPeriodDate(e.paymentDueDate, periodFilter);
       return matchSearch && matchPayout && matchPeriod;
     });
   }, [enriched, search, filterPayout, periodFilter]);
+
+  const payoutCounts = useMemo(() => {
+    const base = enriched.filter((e) =>
+      matchesPeriodDate(e.paymentDueDate, periodFilter),
+    );
+    return (Object.keys(PAYOUT_LABELS) as PayoutStatus[]).reduce(
+      (acc, status) => {
+        acc[status] = base.filter((e) => e.payoutStatus === status).length;
+        return acc;
+      },
+      {} as Record<PayoutStatus, number>,
+    );
+  }, [enriched, periodFilter]);
+
+  const sorted = useSortedItems(
+    filtered,
+    sortKey,
+    sortDir,
+    (a, b, key) => {
+      switch (key) {
+        case "clientName":
+          return compareStrings(a.clientName, b.clientName);
+        case "partnerName":
+          return compareStrings(a.partnerName, b.partnerName);
+        case "categoryLabel":
+          return compareStrings(a.categoryLabel, b.categoryLabel);
+        case "paymentDueDate":
+          return compareStrings(a.paymentDueDate, b.paymentDueDate);
+        case "amount":
+          return compareNumbers(a.amount, b.amount);
+        case "payoutStatus":
+          return compareStrings(a.payoutStatus, b.payoutStatus);
+        default:
+          return 0;
+      }
+    },
+  );
 
   const filteredTotal = useMemo(
     () => filtered.reduce((s, e) => s + e.amount, 0),
@@ -216,38 +270,45 @@ export function ExpensesManager() {
         summary={`${periodFilterLabel(periodFilter)} · ${filtered.length}건 · ${formatKRW(filteredTotal)}`}
       />
 
-      <Card className="mb-4 flex flex-wrap items-center gap-3">
-        <SearchBar value={search} onChange={setSearch} placeholder="업체 · 수취인 검색" />
-        <Select
-          value={filterPayout}
-          onChange={(e) => setFilterPayout(e.target.value)}
-          className="w-36"
-        >
-          <option value="all">전체 상태</option>
-          {(Object.keys(PAYOUT_LABELS) as PayoutStatus[]).map((s) => (
-            <option key={s} value={s}>
-              {PAYOUT_LABELS[s]}
-            </option>
-          ))}
-        </Select>
+      <Card className="mb-4">
+        <ListToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder={LIST_SEARCH_PLACEHOLDERS.expenses}
+          showSortHint
+          filters={
+            <FilterChipGroup
+              value={filterPayout}
+              onChange={setFilterPayout}
+              options={(Object.keys(PAYOUT_LABELS) as PayoutStatus[]).map(
+                (status) => ({
+                  value: status,
+                  label: PAYOUT_LABELS[status],
+                  count: payoutCounts[status],
+                  tone: PAYOUT_FILTER_TONE[status],
+                }),
+              )}
+            />
+          }
+        />
       </Card>
 
       <DataTable>
         <thead>
           <tr>
-            <Th>업체</Th>
-            <Th>파트너사</Th>
-            <Th>카테고리</Th>
+            <SortableTh {...sortProps("clientName")}>업체</SortableTh>
+            <SortableTh {...sortProps("partnerName")}>파트너사</SortableTh>
+            <SortableTh {...sortProps("categoryLabel")}>카테고리</SortableTh>
             <Th>내용</Th>
-            <Th>입금마감일</Th>
-            <Th>금액</Th>
-            <Th>계좌</Th>
-            <Th>상태</Th>
+            <SortableTh {...sortProps("paymentDueDate")}>입금마감일</SortableTh>
+            <SortableTh {...sortProps("amount")}>금액</SortableTh>
+            <Th>은행 · 계좌</Th>
+            <SortableTh {...sortProps("payoutStatus")}>상태</SortableTh>
             <Th className="w-32">관리</Th>
           </tr>
         </thead>
         <tbody>
-          {filtered.map((e) => {
+          {sorted.map((e) => {
             const overdue = isPaymentOverdue(e);
             const canRequest = canUserRequestExpense(
               data,
@@ -276,12 +337,19 @@ export function ExpensesManager() {
                 </Td>
                 <Td className="font-mono">{formatKRW(e.amount)}</Td>
                 <Td className="font-mono text-xs">
-                  {e.bankAccount}
+                  {e.bankName ? (
+                    <>
+                      <span className="text-zinc-500">{e.bankName}</span>{" "}
+                      {e.bankAccount}
+                    </>
+                  ) : (
+                    e.bankAccount
+                  )}
                   <br />
                   <span className="text-zinc-600">{e.accountHolder}</span>
                 </Td>
                 <Td>
-                  <Badge variant={PAYOUT_VARIANT[e.payoutStatus]}>
+                  <Badge variant={PAYOUT_BADGE_VARIANT[e.payoutStatus]}>
                     {PAYOUT_LABELS[e.payoutStatus]}
                   </Badge>
                 </Td>
@@ -323,7 +391,7 @@ export function ExpensesManager() {
         </tbody>
       </DataTable>
 
-      {filtered.length === 0 && <EmptyState message="원가 데이터가 없습니다" />}
+      {sorted.length === 0 && <EmptyState message="원가 데이터가 없습니다" />}
 
       <Modal
         open={modalOpen}
@@ -390,7 +458,7 @@ export function ExpensesManager() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <p className="mb-1.5 text-xs font-medium text-zinc-400">지급 상태</p>
-              <Badge variant={PAYOUT_VARIANT[editing?.payoutStatus ?? "unpaid"]}>
+              <Badge variant={PAYOUT_BADGE_VARIANT[editing?.payoutStatus ?? "unpaid"]}>
                 {PAYOUT_LABELS[editing?.payoutStatus ?? "unpaid"]}
               </Badge>
               <p className="mt-1 text-[11px] text-zinc-600">

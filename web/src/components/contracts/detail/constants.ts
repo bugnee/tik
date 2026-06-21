@@ -63,12 +63,4 @@ export const emptyExpense = (contractId: string): ExpenseInput => ({
   paymentDueDate: "",
 });
 
-export const PAYOUT_VARIANT: Record<
-  PayoutStatus,
-  "danger" | "warning" | "success" | "info"
-> = {
-  unpaid: "danger",
-  pending_approval: "info",
-  pending_transfer: "warning",
-  paid: "success",
-};
+export { PAYOUT_BADGE_VARIANT as PAYOUT_VARIANT } from "@/lib/list-ui-consistency";

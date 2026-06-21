@@ -15,12 +15,13 @@ import {
   DataTable,
   EmptyState,
   PageHeader,
-  SearchBar,
   SortableTh,
   Td,
   Th,
   Tr,
 } from "@/components/ui/DataTable";
+import { ListToolbar } from "@/components/ui/ListToolbar";
+import { LIST_SEARCH_PLACEHOLDERS } from "@/lib/list-ui-consistency";
 import { StatCard } from "@/components/ui/StatCard";
 import { Checkbox, Input, Select } from "@/components/ui/FormFields";
 import { GlossaryHint } from "@/components/ui/GlossaryHint";
@@ -341,10 +342,11 @@ export function ContractsManager() {
       </div>
 
       <Card className="mb-4">
-        <SearchBar
-          value={search}
-          onChange={setSearch}
-          placeholder="상호명 · 회사명 · 담당자 · 지역 검색"
+        <ListToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder={LIST_SEARCH_PLACEHOLDERS.contracts}
+          showSortHint
         />
       </Card>
 

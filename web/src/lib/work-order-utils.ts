@@ -93,6 +93,24 @@ export const WORK_ORDER_STAGE_LABELS: Record<WorkOrderStage, string> = {
   postponed: "연기",
 };
 
+/** 워크오더 단계 → Badge variant (전 화면 공통) */
+export const WORK_ORDER_STAGE_BADGE_VARIANT: Record<
+  WorkOrderStage,
+  "default" | "warning" | "success" | "danger" | "info"
+> = {
+  draft: "default",
+  pending_approval: "warning",
+  pending_staff_confirm: "warning",
+  approved: "info",
+  delivered: "warning",
+  paid: "success",
+  order_ready: "success",
+  rejected: "danger",
+  cancelled: "default",
+  on_hold: "warning",
+  postponed: "warning",
+};
+
 /** 업무 단계 라벨 — 리셀러 수수료는 입금+10일 규칙 반영 */
 export function getWorkOrderStageLabel(
   order: WorkOrder,

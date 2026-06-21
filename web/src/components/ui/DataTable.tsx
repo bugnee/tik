@@ -1,5 +1,8 @@
 import { cn } from "@/lib/cn";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Search } from "lucide-react";
+import { LIST_SEARCH_PLACEHOLDERS } from "@/lib/list-ui-consistency";
+
+export { LIST_SORT_HINT } from "@/lib/list-ui-consistency";
 
 export function PageHeader({
   title,
@@ -32,20 +35,25 @@ export function PageHeader({
 export function SearchBar({
   value,
   onChange,
-  placeholder = "검색...",
+  placeholder = LIST_SEARCH_PLACEHOLDERS.default,
+  className,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  className?: string;
 }) {
   return (
-    <input
-      type="search"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="h-10 w-full max-w-xs rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:border-emerald-500/50 focus:outline-none sm:w-64"
-    />
+    <div className={cn("relative w-full max-w-xs sm:w-64", className)}>
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="h-10 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] pl-9 pr-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/20"
+      />
+    </div>
   );
 }
 

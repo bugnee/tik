@@ -12,25 +12,9 @@ import {
   isReferralCommissionWorkOrder,
   WORK_ORDER_STAGE_LABELS,
   getWorkOrderStageLabel,
+  WORK_ORDER_STAGE_BADGE_VARIANT,
   type EnrichedWorkOrder,
 } from "@/lib/work-order-utils";
-
-const STAGE_VARIANT: Record<
-  EnrichedWorkOrder["stage"],
-  "default" | "warning" | "success" | "danger" | "info"
-> = {
-  draft: "default",
-  pending_approval: "warning",
-  pending_staff_confirm: "warning",
-  approved: "info",
-  delivered: "warning",
-  paid: "success",
-  order_ready: "success",
-  rejected: "danger",
-  cancelled: "default",
-  on_hold: "warning",
-  postponed: "warning",
-};
 
 /** 파트너 포털 — 배정 업무 조회 전용 (승인·결과입력 없음) */
 export function PartnerWorkReadOnlyCard({
@@ -50,7 +34,7 @@ export function PartnerWorkReadOnlyCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <TaskChannelBadge data={data} taskType={order.taskType} />
-            <Badge variant={STAGE_VARIANT[order.stage]}>
+            <Badge variant={WORK_ORDER_STAGE_BADGE_VARIANT[order.stage]}>
               {getWorkOrderStageLabel(order, contract)}
             </Badge>
           </div>
