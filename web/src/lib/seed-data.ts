@@ -25,7 +25,11 @@ import { DEFAULT_EXPENSE_CATEGORIES } from "./expense-category-utils";
 import { DEFAULT_PARTNER_FILTERS } from "./partner-filter-utils";
 import { DEFAULT_EXPERIENCE_FIELDS } from "./experience-field-utils";
 import { normalizePartner, type LegacyPartnerInput } from "./partner-utils";
-import { calcBonusAmounts, calcBonusClosingDeadline, calcScheduledPayDate, defaultBonusPolicy } from "./bonus-utils";
+import { calcBonusAmounts, calcBonusClosingDeadline, calcScheduledPayDate } from "./bonus-utils";
+import {
+  buildPortfolioExpenses,
+  portfolioBonusPolicy,
+} from "./portfolio-seed";
 import {
   buildWorkEvaluationInput,
   computeEvaluationMetrics,
@@ -406,66 +410,7 @@ function buildPartners(): Partner[] {
 }
 
 function buildExpenses(contracts: Contract[], partners: Partner[]): Expense[] {
-  const pressPartner = partners.find((p) => p.id === "p-press-1")!;
-  const expPartner = partners.find((p) => p.id === "p-exp-1")!;
-
-  return contracts
-    .filter((c) => c.status === "active")
-    .flatMap((c, i) => {
-    const requestDay = addDays(MONTH_START, 3 + (i % 10));
-    const expRequestDay = addDays(MONTH_START, 5 + (i % 8));
-    const statusCycle = i % 5;
-    const pressStatus =
-      statusCycle === 0
-        ? "unpaid"
-        : statusCycle === 1
-          ? "pending_approval"
-          : statusCycle === 2
-            ? "pending_transfer"
-            : "paid";
-    const expStatus = i % 4 === 0 ? "unpaid" : "paid";
-
-    return [
-      {
-        id: `e-${i * 2 + 1}`,
-        contractId: c.id,
-        category: "press" as const,
-        description: `기자단 2차 모집 (${requestDay.slice(5)} 신청)`,
-        amount: 120_000 + i * 10_000,
-        bankAccount: pressPartner.bankAccount,
-        accountHolder: pressPartner.accountHolder,
-        partnerId: pressPartner.id,
-        paymentDueDate: addDays(requestDay, 10),
-        payoutStatus: pressStatus as Expense["payoutStatus"],
-        ...(pressStatus === "pending_approval"
-          ? {
-              payoutRequestedBy: c.assignedStaffId,
-              payoutRequestedAt: addDays(requestDay, 2),
-            }
-          : {}),
-        ...(pressStatus === "pending_transfer" || pressStatus === "paid"
-          ? {
-              payoutRequestedBy: c.assignedStaffId,
-              payoutRequestedAt: addDays(requestDay, 2),
-              payoutApprovedBy: "u-exec-1",
-              payoutApprovedAt: addDays(requestDay, 4),
-            }
-          : {}),
-      },
-      {
-        id: `e-${i * 2 + 2}`,
-        contractId: c.id,
-        category: "experience" as const,
-        description: `체험단 원고비 (${expRequestDay.slice(5)} 집행)`,
-        amount: 85_000 + i * 5_000,
-        bankAccount: expPartner.bankAccount,
-        accountHolder: expPartner.accountHolder,
-        partnerId: expPartner.id,
-        paymentDueDate: addDays(expRequestDay, 7),
-        payoutStatus: expStatus as Expense["payoutStatus"],
-      },
-    ];
-  });
+  return buildPortfolioExpenses(contracts, partners, MONTH_START, addDays);
 }
 
 function buildSeedWorkOrders(
@@ -477,7 +422,7 @@ function buildSeedWorkOrders(
 
 function buildBonusPayments(
   contracts: Contract[],
-  policy: ReturnType<typeof defaultBonusPolicy>,
+  policy: ReturnType<typeof portfolioBonusPolicy>,
 ): BonusPayment[] {
   const seedTeams = [
     { id: "team-a", name: "마케팅 1팀", leaderId: "u-leader-1", executiveId: "u-exec-1" },
@@ -487,8 +432,8 @@ function buildBonusPayments(
   const calcCtx = { teams: seedTeams };
 
   return contracts
-    .filter((c) => c.isExtension && c.renewalMonthCount >= 4)
-    .slice(0, 4)
+    .filter((c) => c.isExtension && c.renewalMonthCount >= 4 && c.status === "active")
+    .slice(0, 18)
     .map((c, i) => {
       const amounts = calcBonusAmounts(c, policy, calcCtx);
       const stages: BonusPayment["stage"][] = [
@@ -729,7 +674,7 @@ export function createSeedData(): AppData {
   const contractRecords = buildContractRecords(contracts);
   const contractMemos = buildContractMemos(contracts);
   const partnerReferralLeads = buildPartnerReferralLeads(contracts);
-  const bonusPolicy = defaultBonusPolicy();
+  const bonusPolicy = portfolioBonusPolicy();
   const workOrders = buildSeedWorkOrders(contracts, partners);
   const clientUsers = buildClientUsersFromContracts(contracts);
   const demoQa = buildPlaceQaDemo();

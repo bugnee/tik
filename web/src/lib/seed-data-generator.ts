@@ -22,7 +22,9 @@ import {
 import type { Partner } from "./types";
 import { JEJU_OSEONG_CONTRACT_ID } from "./jeju-oseong-operational-data";
 
-/** 제주 오성 중심 단일 스케일 — 8개 샘플 클라이언트 */
+/** 실무 포트폴리오 데모 — 담당 3명 (급여 350만 × 3) */
+export const PORTFOLIO_STAFF_COUNT = 3;
+/** 제주 오성 중심 · 43개 고객사 포트폴리오 */
 export const SEED_SCALE = 1;
 /** 샘플 데이터 목표 실행·달성률(%) — 제주 오성 기준 ~70% */
 export const SEED_COMPLETION_RATE = 70;
@@ -101,11 +103,13 @@ export function buildScaledClientNames(baseNames: readonly string[]): string[] {
 }
 
 export function buildStaffPool(): string[] {
-  return STAFF_NAMES.map((_, i) => `u-staff-${i + 1}`);
+  return STAFF_NAMES.slice(0, PORTFOLIO_STAFF_COUNT).map(
+    (_, i) => `u-staff-${i + 1}`,
+  );
 }
 
 export function buildStaffUsers(): User[] {
-  return STAFF_NAMES.map((name, i) => ({
+  return STAFF_NAMES.slice(0, PORTFOLIO_STAFF_COUNT).map((name, i) => ({
     id: `u-staff-${i + 1}`,
     name,
     role: "staff" as const,

@@ -1,7 +1,7 @@
 import type { AppData } from "@/lib/types";
 
 /** localStorage 키 — 포맷 변경 시 버전 올림 */
-export const APP_STORAGE_KEY = "tripitkorea-erp-v25";
+export const APP_STORAGE_KEY = "tripitkorea-erp-v26";
 const LEGACY_KEY_PREFIX = "tripitkorea-erp-v";
 const GZIP_PREFIX = "gz:";
 

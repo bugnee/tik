@@ -18,7 +18,9 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "test:schedule": "tsx src/services/schedule-generator.test.ts"
+    "test:schedule": "tsx src/services/schedule-generator.test.ts",
+    "screenshots:facebook": "node scripts/capture-facebook-screenshots.mjs",
+    "report:ceo-pdf": "node scripts/generate-ceo-report-pdf.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
@@ -28,6 +30,7 @@
   "devDependencies": {
     "@types/express": "^5.0.3",
     "@types/node": "^22.15.32",
+    "playwright": "^1.61.0",
     "prisma": "^6.9.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"

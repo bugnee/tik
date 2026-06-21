@@ -10,13 +10,18 @@ import type {
 } from "./types";
 import { buildDemoClientLinks } from "./client-links-utils";
 import {
+  buildExtendedPortfolioScenarios,
+  PORTFOLIO_CONTRACT_COUNT,
+  PORTFOLIO_MONTHLY_REVENUE,
+  scaleActiveMonthlyFees,
+  type PortfolioScenarioInput,
+} from "./portfolio-seed";
+import {
   clientUserIdForContract,
   resolveExecutionProgress,
   staffIdForIndex,
   teamIdForIndex,
 } from "./seed-data-generator";
-
-/** 샘플 시드에 포함되는 8개 큐레이션 고객사 ID */
 export const SAMPLE_CLIENT_IDS = [
   "c-1",
   "c-2",
@@ -226,7 +231,24 @@ export function buildSampleContracts(
   addDaysFn: (iso: string, days: number) => string,
   addMonthsIsoFn: (iso: string, months: number) => string,
 ): Contract[] {
-  return SAMPLE_SCENARIOS.map((scenario) => {
+  const curated: PortfolioScenarioInput[] = SAMPLE_SCENARIOS.map((s) => ({ ...s }));
+  // c-8 포함 43개 전부 활성 · 월 매출 6,000만에 맞춤
+  curated.forEach((s) => {
+    if (s.id === "c-8") {
+      s.status = "active";
+      s.clientDepositStatus = "completed";
+      s.lastClientDepositDate = (ms: string) => ms;
+      s.contractEndDate = (_d, monthEnd) => monthEnd;
+      s.renewalMonthCount = 4;
+      s.isExtension = true;
+    }
+  });
+
+  const extended = buildExtendedPortfolioScenarios(9, PORTFOLIO_CONTRACT_COUNT);
+  const allScenarios = [...curated, ...extended];
+  scaleActiveMonthlyFees(allScenarios, PORTFOLIO_MONTHLY_REVENUE);
+
+  return allScenarios.map((scenario) => {
     const optProgress = resolveExecutionProgress(
       scenario.index,
       "optimized",
