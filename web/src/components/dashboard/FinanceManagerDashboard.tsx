@@ -469,11 +469,11 @@ function ExpensePayoutQueue({
 
   function downloadCSV() {
     const items = expenses.filter((e) => selected.has(e.id));
-    const header = "수취인,계좌번호,금액,입금요청일,적요\n";
+    const header = "은행,수취인,계좌번호,금액,입금요청일,적요\n";
     const rows = items
       .map(
         (e) =>
-          `${e.accountHolder},${e.bankAccount},${e.amount},${e.payoutRequestedAt ?? ""},${e.clientName}_${e.description}`,
+          `${e.bankName ?? ""},${e.accountHolder},${e.bankAccount},${e.amount},${e.payoutRequestedAt ?? ""},${e.clientName}_${e.description}`,
       )
       .join("\n");
     const blob = new Blob(["\uFEFF" + header + rows], {
@@ -553,6 +553,7 @@ function ExpensePayoutQueue({
               >
                 입금요청일
               </SortableTh>
+              <th className="pb-3 pr-4 font-medium">은행 · 계좌</th>
               <SortableTh
                 className="pb-3 pr-4"
                 active={sortKey === "amount"}
@@ -592,6 +593,19 @@ function ExpensePayoutQueue({
                 <td className="py-3 pr-4">{e.categoryLabel}</td>
                 <td className="py-3 pr-4 font-mono text-zinc-300">
                   {e.payoutRequestedAt ?? "-"}
+                </td>
+                <td className="py-3 pr-4 font-mono text-xs">
+                  <p className="text-zinc-200">
+                    {e.bankName ? (
+                      <>
+                        <span className="text-zinc-400">{e.bankName}</span>{" "}
+                        {e.bankAccount}
+                      </>
+                    ) : (
+                      e.bankAccount
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-zinc-600">{e.accountHolder}</p>
                 </td>
                 <td className="py-3 pr-4 font-mono text-zinc-200">
                   {formatKRW(e.amount)}

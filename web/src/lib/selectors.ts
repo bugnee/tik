@@ -322,6 +322,7 @@ export function enrichExpense(data: AppData, expense: Expense) {
     ...expense,
     clientName: getClientName(data, expense.contractId),
     partnerName: partner?.companyName ?? "-",
+    bankName: partner?.bankName,
     categoryLabel: getExpenseCategoryLabel(data.expenseCategories, expense.category),
   };
 }

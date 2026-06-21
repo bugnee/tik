@@ -296,7 +296,7 @@ function SettlementChecklist({
               <th className="pb-3 pr-4 font-medium">업체</th>
               <th className="pb-3 pr-4 font-medium">카테고리</th>
               <th className="pb-3 pr-4 font-medium">금액</th>
-              <th className="pb-3 pr-4 font-medium">계좌</th>
+              <th className="pb-3 pr-4 font-medium">은행 · 계좌</th>
               <th className="pb-3 font-medium">상태</th>
             </tr>
           </thead>
@@ -328,7 +328,14 @@ function SettlementChecklist({
                   {formatKRW(e.amount)}
                 </td>
                 <td className="py-3 pr-4 font-mono text-xs">
-                  {e.bankAccount}
+                  {e.bankName ? (
+                    <>
+                      <span className="text-zinc-400">{e.bankName}</span>{" "}
+                      {e.bankAccount}
+                    </>
+                  ) : (
+                    e.bankAccount
+                  )}
                   <br />
                   <span className="text-zinc-600">{e.accountHolder}</span>
                 </td>
