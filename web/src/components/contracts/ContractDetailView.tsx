@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Plus,
   RefreshCw,
+  UserCog,
 } from "lucide-react";
 import { useData } from "@/context/DataContext";
 import { useRole } from "@/context/RoleContext";
@@ -19,6 +20,7 @@ import { Input, Select } from "@/components/ui/FormFields";
 import { Modal } from "@/components/ui/Modal";
 import { TabBar } from "@/components/ui/TabBar";
 import { ContractTermsEditModal } from "@/components/contracts/ContractTermsEditModal";
+import { ContractStaffReassignModal } from "@/components/contracts/ContractStaffReassignModal";
 import { ContractKpiStrip } from "@/components/contracts/ContractKpiStrip";
 import {
   CONTRACT_DETAIL_TABS,
@@ -43,6 +45,11 @@ import {
   isBonusEligible,
 } from "@/lib/bonus-utils";
 import { canRoleViewContract, isLeaderManagedContract } from "@/lib/contract-access-utils";
+import {
+  buildStaffReassignMemo,
+  canReassignContractStaff,
+  type ContractStaffReassignReason,
+} from "@/lib/contract-staff-reassign-utils";
 import { daysUntil } from "@/lib/contract-lifecycle";
 import {
   canEditContractTerms,
@@ -107,6 +114,7 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
   const [memoDraft, setMemoDraft] = useState("");
   const [termsModalMode, setTermsModalMode] =
     useState<ContractTermsChangeMode | null>(null);
+  const [reassignModalOpen, setReassignModalOpen] = useState(false);
 
   const contract = data.contracts.find((c) => c.id === contractId);
   const contractRecords = useMemo(
@@ -246,12 +254,46 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
     contract.status === "active" &&
     canEditContractTerms(data, contract, activeRole, currentUser.id);
 
+  const canReassignStaff =
+    contract.status === "active" && canReassignContractStaff(activeRole);
+
   const canRecontract = canRecontractAfterTermination(
     data,
     contract,
     activeRole,
     currentUser.id,
   );
+
+  function handleReassignStaff(values: {
+    assignedStaffId: string;
+    teamId: string;
+    reason: ContractStaffReassignReason;
+    note: string;
+  }) {
+    if (!contract) return;
+    const fromName = getUserName(data, contract.assignedStaffId);
+    const toName = getUserName(data, values.assignedStaffId);
+    updateContract(
+      contractId,
+      {
+        assignedStaffId: values.assignedStaffId,
+        teamId: values.teamId,
+      },
+      { mode: "amend" },
+    );
+    data.addContractMemo(
+      contractId,
+      buildStaffReassignMemo({
+        fromName,
+        toName,
+        reason: values.reason,
+        note: values.note,
+      }),
+      currentUser.id,
+    );
+    setReassignModalOpen(false);
+    showToast(`${fromName} → ${toName} 담당자가 변경되었습니다.`);
+  }
 
   function handleSaveTerms(
     values: ContractTermsFormValues,
@@ -505,6 +547,16 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
             <Plus className="h-4 w-4" />
             원가
           </Button>
+          {canReassignStaff && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setReassignModalOpen(true)}
+            >
+              <UserCog className="h-4 w-4" />
+              담당자 변경
+            </Button>
+          )}
           {contract.status === "active" && (
             <Button variant="danger" size="sm" onClick={() => setTerminateModal(true)}>
               해지
@@ -670,6 +722,13 @@ export function ContractDetailView({ contractId }: { contractId: string }) {
           onRequestApproval={handleRequestTermsApproval}
         />
       )}
+
+      <ContractStaffReassignModal
+        contract={contract}
+        open={reassignModalOpen}
+        onClose={() => setReassignModalOpen(false)}
+        onConfirm={handleReassignStaff}
+      />
 
       <Modal
         open={terminateModal}

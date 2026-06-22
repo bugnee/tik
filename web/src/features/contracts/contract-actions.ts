@@ -116,6 +116,11 @@ export function applyUpdateContract(
     ];
   }
 
+  const staffReassigned =
+    old &&
+    patch.assignedStaffId &&
+    patch.assignedStaffId !== old.assignedStaffId;
+
   const merged = old ? { ...old, ...patch } : undefined;
 
   if (old && merged) {
@@ -270,6 +275,15 @@ export function applyUpdateContract(
     {
       ...prev,
       contractRecords,
+      ...(staffReassigned
+        ? {
+            qaThreads: (prev.qaThreads ?? []).map((thread) =>
+              thread.contractId === id && thread.status !== "closed"
+                ? { ...thread, assignedStaffId: patch.assignedStaffId! }
+                : thread,
+            ),
+          }
+        : {}),
       ...(mode === "recontract"
         ? {
             extensionApprovals: prev.extensionApprovals.filter(
